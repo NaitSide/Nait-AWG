@@ -1,0 +1,26 @@
+[Unit]
+Description=Nait-AWG Solo panel (existing AmneziaWG)
+After=network-online.target docker.service nait-awg-solo-receiver-selfhost.service
+Wants=network-online.target
+Requires=docker.service nait-awg-solo-receiver-selfhost.service
+
+[Service]
+Type=simple
+User=nait-awg-solo
+Group=nait-awg-solo
+SupplementaryGroups=docker
+WorkingDirectory=/opt/naitlab/nait_awg_solo
+EnvironmentFile=/opt/naitlab/nait_awg_solo/.env
+ExecStart=/opt/naitlab/nait_awg_solo/runtime/bin/node /opt/naitlab/nait_awg_solo/app/server.js
+Restart=always
+RestartSec=5
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/naitlab/nait_awg_solo/data
+
+[Install]
+WantedBy=multi-user.target

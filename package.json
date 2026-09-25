@@ -1,0 +1,16 @@
+{
+  "name": "nait-awg",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single-node AmneziaWG access panel.",
+  "main": "app/server.js",
+  "scripts": {
+    "start": "node app/server.js",
+    "check": "node --check app/server.js && node --check app/services/soloService.js && node --check app/services/backupService.js && node --check app/services/usageService.js && node --check app/views/panelView.js && node --check app/public/panel.js && node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4"
+  }
+}

@@ -1,0 +1,141 @@
+.login-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    radial-gradient(circle at 50% 30%, rgba(29, 158, 117, 0.12), transparent 34%),
+    radial-gradient(circle at 50% 100%, rgba(130, 98, 218, 0.22), transparent 46%),
+    #0d0b14;
+  background-size: 48px 48px, 48px 48px, auto, auto, auto;
+  font-family: "Montserrat", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.login-card {
+  display: block;
+  width: min(390px, 100%);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(28, 30, 39, 0.96), rgba(17, 15, 24, 0.98));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34), 0 0 32px rgba(130, 98, 218, 0.08);
+}
+
+.login-head {
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  color: #e6edf3;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.login-brand svg {
+  width: 23px;
+  height: 23px;
+  color: #8262da;
+}
+
+.login-card h1 {
+  margin: 0 0 7px;
+  color: #e6edf3;
+  font-size: 24px;
+  line-height: 1.12;
+  font-weight: 600;
+}
+
+.login-card .login-head p {
+  margin: 0;
+  color: #8b949e;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.login-card form {
+  display: grid;
+  gap: 13px;
+  padding: 20px 22px 22px;
+}
+
+.login-card label {
+  display: grid;
+  gap: 7px;
+  color: rgba(139, 148, 158, 0.92);
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+.login-card input {
+  width: 100%;
+  height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  outline: 0;
+  background: rgba(10, 9, 16, 0.72);
+  color: #e6edf3;
+  font: 500 14px "Montserrat", system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.login-card input:focus {
+  border-color: rgba(130, 98, 218, 0.55);
+  box-shadow: 0 0 0 3px rgba(130, 98, 218, 0.12);
+  background: rgba(12, 11, 18, 0.9);
+}
+
+.login-submit {
+  width: 100%;
+  height: 44px;
+  margin-top: 3px;
+  border: 1px solid rgba(29, 158, 117, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2fb98d, #209c74);
+  color: #f3fffb;
+  font: 600 14px "Montserrat", system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(29, 158, 117, 0.18);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.login-submit:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 15px 34px rgba(29, 158, 117, 0.24);
+}
+
+.login-submit:active { transform: translateY(1px); }
+.login-submit:disabled { cursor: default; opacity: 0.7; }
+
+.login-card .form-error {
+  min-height: 18px;
+  margin: 0 !important;
+  color: #ff7d7d !important;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+@media (max-width: 420px) {
+  .login-layer { padding: 16px; }
+  .login-card { border-radius: 14px; }
+  .login-head { padding: 20px 18px 16px; }
+  .login-card form { padding: 18px; }
+}

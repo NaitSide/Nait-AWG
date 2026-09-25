@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Nait-AWG</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/login.css">
+</head>
+<body>
+  <div class="login-layer" id="loginLayer">
+    <section class="login-card" aria-label="Nait-AWG">
+      <div class="login-head">
+        <div class="login-brand">
+          <svg aria-hidden="true" viewBox="0 0 1024 1024" focusable="false">
+            <polygon fill="currentColor" points="455,270 735,733 358,733 301,826 907,826 512,173"></polygon>
+            <polygon fill="currentColor" points="232,826 483,410 427,315 118,826"></polygon>
+            <polygon fill="currentColor" points="393,675.7 632.3,675.7 512.7,479.7"></polygon>
+          </svg>
+          <span>Nait-AWG</span>
+        </div>
+        <h1>Вход</h1>
+        <p>Закрытый доступ</p>
+      </div>
+      <form action="/login" method="post" autocomplete="on">
+        <label>Логин<input id="login" name="login" type="text" value="NaitSide" autocomplete="username" spellcheck="false" required></label>
+        <label>Пароль<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+        <p class="form-error" id="loginError" aria-live="polite"></p>
+        <button class="login-submit" type="submit">Войти</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="shell" id="appShell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">△</div><div><strong>Nait-AWG</strong><span>single node control room</span></div></div>
+      <nav>
+        <button class="nav-link active" data-view="access"><span>◈</span> Доступы <b id="peerCount">—</b></button>
+        <button class="nav-link" data-view="settings"><span>⚙</span> Настройки</button>
+      </nav>
+      <div class="sidebar-foot"><span class="dot"></span><span id="nodeName">tw-fra-nr-awg-01</span></div>
+    </aside>
+
+    <main>
+      <section class="view active" id="accessView">
+        <header class="page-header"><div><h1>Пользователи</h1></div><button class="button primary" id="openCreate">＋ Выдать вручную</button></header>
+        <div class="toolbar"><input type="search" id="search" placeholder="Поиск по имени или ip"><select id="stateFilter"><option value="all">Все клиенты</option><option value="active">Активные</option><option value="inactive">Неактивные</option><option value="existing">Существующие</option></select></div>
+        <section class="panel access-panel">
+          <div class="panel-head"><div class="actions"><button class="icon-button" id="showQr" title="Показать QR-код" disabled>⌗</button><button class="icon-button" id="downloadConfig" title="Скачать конфиг" disabled>⇩</button><i></i><button class="icon-button" id="refresh" title="Обновить список">↻</button><button class="icon-button danger" id="deletePeer" title="Удалить peer" disabled>⌫</button></div><div class="page-size"><button class="active">10</button><button>30</button><button>50</button></div></div>
+          <div class="table-wrap"><table><thead><tr><th>ПОЛЬЗОВАТЕЛЬ</th><th>АКТИВНОСТЬ</th><th>АДРЕС</th><th>НОДА</th><th>КОНФИГ</th><th>СТАТУС</th></tr></thead><tbody id="peerRows"><tr><td colspan="6" class="empty">Загрузка доступов...</td></tr></tbody></table></div>
+        </section>
+      </section>
+
+      <section class="view" id="settingsView">
+        <header class="page-header"><div><h1>Настройки</h1><p>Профиль ноды и справочные параметры AmneziaWG.</p></div></header>
+        <div class="settings-grid">
+          <section class="panel backup-card"><div class="card-title"><div><h2>Solo Backup</h2><p>Резервные копии будут подключены installer’ом.</p></div><span class="tag">planned</span></div><div class="card-actions"><button class="button" disabled>↶ Восстановить</button><button class="button" disabled>⇩ Резервная копия</button></div></section>
+          <section class="panel backup-card"><div class="card-title"><div><h2>Node status</h2><p id="nodeStatus">Получаем состояние ноды...</p></div><span class="tag green" id="protocol">—</span></div><div class="node-details"><span>Interface <b id="interfaceName">—</b></span><span>Endpoint <b id="endpoint">—</b></span></div></section>
+        </div>
+        <section class="panel obfuscation"><div class="card-title"><div><h2>AWG Obfuscation</h2><p>Параметры маскировки AmneziaWG.</p></div><div class="readonly"><span>Read-only</span><i></i></div></div><div class="parameter-grid" id="parameterGrid"><p class="empty">Загрузка параметров...</p></div></section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="createModal" aria-hidden="true"><form class="modal-card" id="createForm"><div class="modal-head"><div><h2>Новый клиент</h2><p>Создаётся peer и один зашифрованный клиентский профиль.</p></div><button type="button" class="close" data-close>×</button></div><label>Имя клиента<input id="clientLabel" maxlength="80" placeholder="например, iPhone-Nikita" required></label><p class="hint">Для существующих peer’ов старые клиентские приватные ключи не восстанавливаются.</p><p class="form-error" id="createError" hidden></p><div class="modal-actions"><button type="button" class="button" data-close>Отмена</button><button type="submit" class="button primary">Создать</button></div></form></div>
+  <div class="modal" id="qrModal" aria-hidden="true"><div class="modal-card qr-card"><div class="modal-head"><div><h2>Конфигурация клиента</h2><p id="qrLabel">—</p></div><button type="button" class="close" data-close>×</button></div><div class="qr-box" id="qrBox"></div><p class="hint">Отсканируйте QR-код в AmneziaVPN.</p></div></div>
+<script>
+  if (new URLSearchParams(location.search).get('error') === '1') {
+    document.getElementById('loginError').textContent = 'Неверный логин или пароль.';
+  }
+</script>
+</body>
+</html>
