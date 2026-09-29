@@ -211,7 +211,8 @@ test('parseAwgClientInterfaceParameters keeps client junk enabled when server ju
 test('parseAwgClientInterfaceParameters reports controlled errors for missing or invalid params', () => {
   assert.throws(
     () => parseAwgClientInterfaceParameters('[Interface]\nJc = 1\n'),
-    /awg_client_parameters_unavailable/
+    (error) => error.code === 'awg_client_parameters_unavailable'
+      && /invalid_or_missing_awg_client_parameter:Jmin/.test(error.message)
   );
   assert.throws(
     () => parseAwgClientInterfaceParameters(syntheticAwgConfig({ S2: 'bad' })),

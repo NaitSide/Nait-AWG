@@ -346,18 +346,22 @@ function parseAwgClientInterfaceParameters(configText) {
 
   const normalized = {};
   for (const name of AWG_3_1_REQUIRED_CLIENT_INTERFACE_PARAMETER_NAMES) {
+    const invalidParameter = () => createProfileError(
+      'awg_client_parameters_unavailable',
+      `awg_client_parameters_unavailable: invalid_or_missing_awg_client_parameter:${name}`
+    );
     if (!Object.prototype.hasOwnProperty.call(params, name)) {
-      throw createProfileError('awg_client_parameters_unavailable');
+      throw invalidParameter();
     }
 
     const text = String(params[name] ?? '').trim();
     if (AWG_NUMERIC_INTERFACE_PARAMETER_SET.has(name)) {
       if (!/^\d+$/.test(text)) {
-        throw createProfileError('awg_client_parameters_unavailable');
+        throw invalidParameter();
       }
       const parsed = Number(text);
       if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > UINT32_MAX) {
-        throw createProfileError('awg_client_parameters_unavailable');
+        throw invalidParameter();
       }
       normalized[name] = parsed;
       continue;
@@ -367,14 +371,14 @@ function parseAwgClientInterfaceParameters(configText) {
       try {
         normalized[name] = validateWireGuardPublicKey(text);
       } catch {
-        throw createProfileError('awg_client_parameters_unavailable');
+        throw invalidParameter();
       }
       continue;
     }
 
     if (AWG_BOOLEAN_INTERFACE_PARAMETER_SET.has(name)) {
       if (!/^(?:on|off|0|1)$/i.test(text)) {
-        throw createProfileError('awg_client_parameters_unavailable');
+        throw invalidParameter();
       }
       normalized[name] = text.toLowerCase();
       continue;
@@ -387,7 +391,7 @@ function parseAwgClientInterfaceParameters(configText) {
 
     const match = text.match(/^(\d+)(?:-(\d+))?$/);
     if (!match) {
-      throw createProfileError('awg_client_parameters_unavailable');
+      throw invalidParameter();
     }
     const start = Number(match[1]);
     const end = match[2] === undefined ? start : Number(match[2]);
@@ -397,7 +401,7 @@ function parseAwgClientInterfaceParameters(configText) {
       !Number.isSafeInteger(end) || end < 0 || end > max ||
       start > end
     ) {
-      throw createProfileError('awg_client_parameters_unavailable');
+      throw invalidParameter();
     }
     normalized[name] = text;
   }
@@ -412,7 +416,7 @@ function parseAwgClientInterfaceParameters(configText) {
   }
 
   if (normalized.Jmin > normalized.Jmax) {
-    throw createProfileError('awg_client_parameters_unavailable');
+    throw createProfileError('awg_client_parameters_unavailable', 'awg_client_parameters_unavailable: invalid_awg_client_parameter_range:Jmin-Jmax');
   }
 
   return normalized;
@@ -573,6 +577,7 @@ async function getAwgProfile() {
       ...baseProfile,
       status: 'error',
       error: error.code || 'awg_profile_unavailable',
+      ...(error.code === 'awg_client_parameters_unavailable' ? { errorDetail: error.message } : {}),
       timestamp: nowIso()
     };
   }

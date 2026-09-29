@@ -28,7 +28,8 @@ async function audit() {
   process.env.AWG_CONTAINER_CONFIG_PATH = '/opt/amnezia/awg/awg0.conf';
   const [profile, inventory] = await Promise.all([getAwgProfile(), getAwgPeers()]);
   if (profile.status !== 'ok' || profile.protocolVersion !== '3.1') {
-    throw new Error(`AWG 3.1 profile check failed (${profile.error || profile.status}).`);
+    const detail = profile.errorDetail ? `: ${profile.errorDetail}` : '';
+    throw new Error(`AWG 3.1 profile check failed (${profile.error || profile.status}${detail}).`);
   }
   if (inventory.status !== 'ok' || !Array.isArray(inventory.persistentPeers)) {
     throw new Error('Cannot read persistent AWG peer inventory.');
