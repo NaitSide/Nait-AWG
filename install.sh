@@ -183,7 +183,9 @@ TLS_CERT_PATH=$INSTALL_DIR/tls/cert.pem
 COOKIE_SECURE=true
 NAIT_AWG_SESSION_SECRET=$session_secret
 NAIT_AWG_DATA_KEY=$data_key
-NAIT_AWG_ADMIN_PASSWORD=$admin_password
+NAIT_AWG_ADMIN_LOGIN=admin
+NAIT_AWG_ADMIN_PASSWORD='$admin_password'
+NAIT_AWG_AUTH_PATH=$INSTALL_DIR/data/admin-auth.json
 RECEIVER_URL=http://127.0.0.1:42842
 RECEIVER_API_KEY=$receiver_key
 AWG_CONTAINER_NAME=$awg_container
@@ -261,4 +263,5 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; the
   ufw allow "$panel_port/tcp" comment 'Nait-AWG web panel'
 fi
 note "Готово: https://$public_endpoint:$panel_port/ (самоподписанный сертификат)."
+note 'Логин панели: admin'
 note 'VPN не перезапускали. Если панель недоступна, проверьте сетевой экран хостинга.'

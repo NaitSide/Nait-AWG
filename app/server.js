@@ -19,14 +19,31 @@ const tlsEnabled = Boolean(tlsKeyPath || tlsCertPath);
 const cookieSecure = tlsEnabled || String(process.env.COOKIE_SECURE || '').trim().toLowerCase() !== 'false';
 const sessionSecret = Buffer.from(String(process.env.NAIT_AWG_SESSION_SECRET || ''), 'base64');
 const sessionTtlSeconds = Number(process.env.NAIT_AWG_SESSION_TTL_SECONDS || 12 * 60 * 60);
-const adminLogin = String(process.env.NAIT_AWG_ADMIN_LOGIN || 'NaitSide').trim();
+const adminLogin = String(process.env.NAIT_AWG_ADMIN_LOGIN || 'admin').trim();
 const adminPassword = String(process.env.NAIT_AWG_ADMIN_PASSWORD || '');
+const panelDataPath = String(process.env.NAIT_AWG_DATA_PATH || path.join(__dirname, '..', 'data', 'clients.db')).trim();
+const adminAuthPath = String(process.env.NAIT_AWG_AUTH_PATH || path.join(path.dirname(panelDataPath), 'admin-auth.json')).trim();
 const panelService = createAwgService();
 
 if (sessionSecret.length < 32) throw new Error('NAIT_AWG_SESSION_SECRET must contain at least 32 random bytes encoded as base64');
 if (!Number.isInteger(sessionTtlSeconds) || sessionTtlSeconds < 3600 || sessionTtlSeconds > 90 * 24 * 60 * 60) throw new Error('NAIT_AWG_SESSION_TTL_SECONDS must be between 3600 and 7776000');
 if (adminPassword.length < 12) throw new Error('NAIT_AWG_ADMIN_PASSWORD must contain at least 12 characters');
 if (tlsEnabled && (!tlsKeyPath || !tlsCertPath)) throw new Error('TLS_KEY_PATH and TLS_CERT_PATH must be set together');
+
+function loadAdminAuthState() {
+  try {
+    const stored = JSON.parse(fs.readFileSync(adminAuthPath, 'utf8'));
+    if (stored.schemaVersion !== 1 || typeof stored.passwordHash !== 'string' || !Number.isSafeInteger(stored.sessionVersion) || stored.sessionVersion < 0) {
+      throw new Error('invalid admin auth state');
+    }
+    return { passwordHash: stored.passwordHash, sessionVersion: stored.sessionVersion };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { passwordHash: '', sessionVersion: 0 };
+    throw new Error(`Cannot read Nait-AWG admin auth state: ${error.message}`);
+  }
+}
+
+let adminAuthState = loadAdminAuthState();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '32kb' }));
@@ -42,6 +59,51 @@ function sign(value) {
   return crypto.createHmac('sha256', sessionSecret).update(value).digest('base64url');
 }
 
+function stringsMatch(received, expected) {
+  const receivedBuffer = Buffer.from(String(received ?? ''));
+  const expectedBuffer = Buffer.from(String(expected ?? ''));
+  return receivedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+function createPasswordHash(password) {
+  const salt = crypto.randomBytes(16);
+  const digest = crypto.scryptSync(password, salt, 64);
+  return `scrypt$${salt.toString('base64url')}$${digest.toString('base64url')}`;
+}
+
+function passwordMatches(password) {
+  if (!adminAuthState.passwordHash) return stringsMatch(password, adminPassword);
+  const [algorithm, encodedSalt, encodedDigest] = adminAuthState.passwordHash.split('$');
+  if (algorithm !== 'scrypt' || !encodedSalt || !encodedDigest) return false;
+  try {
+    const salt = Buffer.from(encodedSalt, 'base64url');
+    const expected = Buffer.from(encodedDigest, 'base64url');
+    const received = crypto.scryptSync(String(password || ''), salt, expected.length);
+    return expected.length > 0 && crypto.timingSafeEqual(received, expected);
+  } catch {
+    return false;
+  }
+}
+
+async function saveAdminPassword(password) {
+  const nextState = {
+    schemaVersion: 1,
+    passwordHash: createPasswordHash(password),
+    sessionVersion: adminAuthState.sessionVersion + 1,
+    updatedAt: new Date().toISOString()
+  };
+  const directory = path.dirname(adminAuthPath);
+  const temporaryPath = `${adminAuthPath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  await fs.promises.mkdir(directory, { recursive: true });
+  try {
+    await fs.promises.writeFile(temporaryPath, `${JSON.stringify(nextState, null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    await fs.promises.rename(temporaryPath, adminAuthPath);
+  } finally {
+    await fs.promises.unlink(temporaryPath).catch(() => {});
+  }
+  adminAuthState = { passwordHash: nextState.passwordHash, sessionVersion: nextState.sessionVersion };
+}
+
 function readCookies(header) {
   const cookies = {};
   for (const part of String(header || '').split(';')) {
@@ -54,9 +116,10 @@ function readCookies(header) {
 
 function isAuthenticated(req) {
   const token = readCookies(req.headers.cookie).nait_awg_session;
-  const [expiresAt, nonce, signature] = String(token || '').split('.');
-  if (!expiresAt || !nonce || !signature || Number(expiresAt) < Date.now()) return false;
-  const expected = sign(`${expiresAt}.${nonce}`);
+  const [expiresAt, sessionVersion, nonce, signature] = String(token || '').split('.');
+  if (!expiresAt || !sessionVersion || !nonce || !signature || Number(expiresAt) < Date.now()) return false;
+  if (Number(sessionVersion) !== adminAuthState.sessionVersion) return false;
+  const expected = sign(`${expiresAt}.${sessionVersion}.${nonce}`);
   return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
@@ -77,20 +140,14 @@ function sendError(res, error) {
 }
 
 function credentialsMatch(body) {
-  const receivedLogin = Buffer.from(String(body?.login || ''));
-  const expectedLogin = Buffer.from(adminLogin);
-  const receivedPassword = Buffer.from(String(body?.password || ''));
-  const expectedPassword = Buffer.from(adminPassword);
-  return receivedLogin.length === expectedLogin.length
-    && receivedPassword.length === expectedPassword.length
-    && crypto.timingSafeEqual(receivedLogin, expectedLogin)
-    && crypto.timingSafeEqual(receivedPassword, expectedPassword);
+  return stringsMatch(body?.login, adminLogin) && passwordMatches(body?.password);
 }
 
 function issueSession(res) {
   const expiresAt = String(Date.now() + sessionTtlSeconds * 1000);
   const nonce = crypto.randomBytes(18).toString('base64url');
-  const token = `${expiresAt}.${nonce}.${sign(`${expiresAt}.${nonce}`)}`;
+  const payload = `${expiresAt}.${adminAuthState.sessionVersion}.${nonce}`;
+  const token = `${payload}.${sign(payload)}`;
   res.setHeader('Set-Cookie', `nait_awg_session=${token}; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=${sessionTtlSeconds}`);
 }
 
@@ -169,6 +226,27 @@ app.post('/login', (req, res) => {
 app.post('/api/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.status(204).end(); });
 app.post('/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.redirect(303, '/'); });
 app.get('/api/session', (req, res) => res.json({ authenticated: isAuthenticated(req) }));
+app.patch('/api/admin/password', requireAuth, async (req, res) => {
+  const origin = req.get('origin');
+  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
+  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+  const repeatPassword = String(req.body?.repeatPassword || '');
+  if (!passwordMatches(currentPassword)) return res.status(401).json({ code: 'invalid_current_password', message: 'Текущий пароль указан неверно.' });
+  if (newPassword.length < 12 || newPassword.length > 256 || !/^[a-zA-Z0-9@#%^*_.!+\-]+$/.test(newPassword)) {
+    return res.status(400).json({ code: 'invalid_new_password', message: 'Новый пароль: от 12 до 256 символов; разрешены буквы, цифры и @#%^*_.!+-.' });
+  }
+  if (newPassword !== repeatPassword) return res.status(400).json({ code: 'password_mismatch', message: 'Новые пароли не совпадают.' });
+  if (passwordMatches(newPassword)) return res.status(400).json({ code: 'password_unchanged', message: 'Новый пароль совпадает с текущим.' });
+  try {
+    await saveAdminPassword(newPassword);
+    res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`);
+    return res.json({ status: 'ok', reauthRequired: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await panelService.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
 app.post('/api/backup', requireAuth, async (req, res) => {
   const origin = req.get('origin');
@@ -191,7 +269,7 @@ app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { r
 app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
 app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
 app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });
-app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : ''; res.type('html').send(renderAwgPanel({ peers, profile, selectedId, notice })); } catch (error) { sendError(res, error); } });
+app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : ''; res.type('html').send(renderAwgPanel({ peers, profile, selectedId, notice, adminLogin })); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await panelService.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.redirect(303, '/panel'); } catch (error) { sendError(res, error); } });
 app.get('/', (req, res, next) => { if (isAuthenticated(req)) return res.redirect(303, '/panel'); return next(); });

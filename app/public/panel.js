@@ -764,6 +764,73 @@ document.getElementById('accessConfirm').addEventListener('click', async () => {
     button.textContent = enabled ? 'Включить' : 'Отключить';
   }
 });
+
+const adminAccessCard = document.getElementById('adminAccessCard');
+const adminAccessToggle = document.getElementById('adminAccessToggle');
+const adminPasswordForm = document.getElementById('adminPasswordForm');
+const adminPasswordFields = [
+  document.getElementById('adminCurrentPassword'),
+  document.getElementById('adminNewPassword'),
+  document.getElementById('adminRepeatPassword')
+];
+
+function setAdminPasswordStatus(message, type = '') {
+  const status = document.getElementById('adminPasswordStatus');
+  status.textContent = message;
+  status.className = `admin-access-status${type ? ` ${type}` : ''}`;
+}
+
+function setAdminAccessEditing(editing) {
+  adminAccessCard.classList.toggle('editing', editing);
+  adminAccessToggle.setAttribute('aria-pressed', String(editing));
+  document.getElementById('adminAccessMode').textContent = editing ? 'Edit mode' : 'Read-only';
+  adminPasswordFields.forEach(input => { input.disabled = !editing; });
+  if (!editing) adminPasswordFields.forEach(input => { input.value = ''; });
+  setAdminPasswordStatus('');
+  if (editing) document.getElementById('adminCurrentPassword').focus();
+}
+
+adminAccessToggle.addEventListener('click', () => {
+  setAdminAccessEditing(adminAccessToggle.getAttribute('aria-pressed') !== 'true');
+});
+
+adminPasswordForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const currentPassword = document.getElementById('adminCurrentPassword');
+  const newPassword = document.getElementById('adminNewPassword');
+  const repeatPassword = document.getElementById('adminRepeatPassword');
+  const submit = document.getElementById('adminPasswordSubmit');
+  if (newPassword.value !== repeatPassword.value) {
+    setAdminPasswordStatus('Новые пароли не совпадают.', 'error');
+    repeatPassword.focus();
+    return;
+  }
+  submit.disabled = true;
+  const originalLabel = submit.textContent;
+  submit.textContent = 'Сохраняем…';
+  setAdminPasswordStatus('');
+  try {
+    const response = await fetch('/api/admin/password', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        currentPassword: currentPassword.value,
+        newPassword: newPassword.value,
+        repeatPassword: repeatPassword.value
+      }),
+      cache: 'no-store'
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || 'Не удалось сменить пароль.');
+    setAdminPasswordStatus('Пароль изменён. Сейчас откроется экран входа.', 'success');
+    setTimeout(() => window.location.assign('/'), 900);
+  } catch (error) {
+    setAdminPasswordStatus(error.message || 'Не удалось сменить пароль.', 'error');
+    submit.disabled = false;
+    submit.textContent = originalLabel;
+  }
+});
+
 document.querySelectorAll('.nav button[data-view]').forEach(button => button.addEventListener('click', () => {
   document.querySelectorAll('.nav button[data-view]').forEach(item => item.classList.toggle('active', item === button));
   document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === button.dataset.view + 'View'));
