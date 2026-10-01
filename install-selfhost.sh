@@ -116,8 +116,10 @@ install -d -m 0750 "$stage/receiver" "$stage/data" "$stage/tls" "$stage/runtime"
 cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$stage/"
 cp -R -- "$SOURCE_DIR/vendor/receiver/." "$stage/receiver/"
 cp -R -- "$stage/node-v24.20.0-linux-x64/." "$stage/runtime/"
-PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" install --prefix "$stage" --omit=dev --no-audit --no-fund
-PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --no-audit --no-fund
+note 'Устанавливаем библиотеки веб-панели...'
+PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" install --prefix "$stage" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+note 'Устанавливаем библиотеки внутреннего сервиса...'
+PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
 rm -f -- "$stage/$NODE_ARCHIVE"
 rm -rf -- "$stage/node-v24.20.0-linux-x64"
 
@@ -185,7 +187,8 @@ stage=''
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-solo-selfhost.service" "/etc/systemd/system/$PANEL_UNIT"
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-solo-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
 systemctl daemon-reload
-systemctl enable --now "$RECEIVER_UNIT"
+note 'Запускаем внутренний сервис панели...'
+systemctl --quiet enable --now "$RECEIVER_UNIT"
 receiver_ready=false
 for attempt in {1..20}; do
   if curl --fail --silent --max-time 2 http://127.0.0.1:42842/health >/dev/null; then
@@ -199,7 +202,8 @@ if [[ "$receiver_ready" != true ]]; then
   journalctl -u "$RECEIVER_UNIT" -n 25 --no-pager >&2 || true
   fail "Проверьте состояние: sudo systemctl status $RECEIVER_UNIT"
 fi
-systemctl enable --now "$PANEL_UNIT"
+note 'Запускаем веб-панель...'
+systemctl --quiet enable --now "$PANEL_UNIT"
 panel_ready=false
 for attempt in {1..20}; do
   if curl --insecure --fail --silent --max-time 2 "https://127.0.0.1:$panel_port/health" >/dev/null; then
