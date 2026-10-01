@@ -30,7 +30,7 @@ done
 if [[ "${1:-}" == install ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "$INSTALL_DIR already exists; refusing to overwrite an installation."
   [[ ! -e "/etc/systemd/system/$PANEL_UNIT" && ! -e "/etc/systemd/system/$RECEIVER_UNIT" ]] || fail 'Solo self-host systemd units already exist.'
-  [[ -z "$(ss -H -ltn '( sport = :443 or sport = :42842 )')" ]] || fail 'TCP 443 or 42842 is already in use.'
+  [[ -z "$(ss -H -ltn '( sport = :42842 )')" ]] || fail 'TCP 42842 is already in use.'
 elif [[ "${1:-}" != audit ]]; then
   printf 'Usage: sudo bash install-selfhost.sh audit|install\n' >&2
   exit 2
@@ -73,10 +73,36 @@ IFS=. read -r octet1 octet2 octet3 octet4 <<< "$public_endpoint"
 for octet in "$octet1" "$octet2" "$octet3" "$octet4"; do
   (( 10#$octet <= 255 )) || fail 'Invalid public IPv4 address.'
 done
+panel_port="${SOLO_PANEL_PORT:-}"
+if [[ -z "$panel_port" ]]; then
+  suggested_panel_port=''
+  for attempt in {1..40}; do
+    candidate_port="$("$node" -e 'process.stdout.write(String(require("node:crypto").randomInt(20000, 60001)))')"
+    if [[ "$candidate_port" != 42842 && -z "$(ss -H -ltn "( sport = :$candidate_port )")" ]]; then
+      suggested_panel_port="$candidate_port"
+      break
+    fi
+  done
+  [[ -n "$suggested_panel_port" ]] || fail 'Не удалось подобрать свободный порт для панели.'
+  if [[ -r /dev/tty ]]; then
+    read -r -p "Порт веб-панели [$suggested_panel_port] (Enter — принять): " panel_port </dev/tty
+    panel_port="${panel_port:-$suggested_panel_port}"
+  else
+    fail 'Укажите порт панели через SOLO_PANEL_PORT.'
+  fi
+fi
+[[ "$panel_port" =~ ^[0-9]{1,5}$ ]] || fail 'Порт панели должен быть числом от 1024 до 65535.'
+panel_port=$((10#$panel_port))
+(( panel_port >= 1024 && panel_port <= 65535 )) || fail 'Порт панели должен быть числом от 1024 до 65535.'
+[[ "$panel_port" != 42842 ]] || fail 'Порт 42842 зарезервирован для внутреннего сервиса.'
+[[ -z "$(ss -H -ltn "( sport = :$panel_port )")" ]] || fail "TCP-порт $panel_port уже занят. Запустите установку заново и выберите другой."
 admin_password="${SOLO_ADMIN_PASSWORD:-}"
 if [[ -z "$admin_password" && -r /dev/tty ]]; then
   read -r -s -p 'Пароль администратора панели (от 12 символов): ' admin_password </dev/tty
   printf '\n' >&2
+  read -r -s -p 'Повторите пароль: ' admin_password_repeat </dev/tty
+  printf '\n' >&2
+  [[ "$admin_password" == "$admin_password_repeat" ]] || fail 'Пароли не совпадают. Запустите установку заново.'
 fi
 [[ "${#admin_password}" -ge 12 && "$admin_password" =~ ^[a-zA-Z0-9@#%^*_.!+-]+$ ]] || fail 'Admin password must be 12+ characters and use letters, digits or @#%^*_.!+-.'
 
@@ -111,7 +137,7 @@ data_key="$(openssl rand -base64 32 | tr -d '\n')"
 node_id="$(cat /proc/sys/kernel/random/uuid)"
 cat > "$stage/.env" <<EOF
 HOST=0.0.0.0
-PORT=443
+PORT=$panel_port
 TLS_KEY_PATH=$INSTALL_DIR/tls/key.pem
 TLS_CERT_PATH=$INSTALL_DIR/tls/cert.pem
 COOKIE_SECURE=true
@@ -160,9 +186,37 @@ install -m 0644 "$SOURCE_DIR/deploy/nait-awg-solo-selfhost.service" "/etc/system
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-solo-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
 systemctl daemon-reload
 systemctl enable --now "$RECEIVER_UNIT"
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:42842/health >/dev/null
+receiver_ready=false
+for attempt in {1..20}; do
+  if curl --fail --silent --max-time 2 http://127.0.0.1:42842/health >/dev/null; then
+    receiver_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$receiver_ready" != true ]]; then
+  note 'Внутренний сервис не запустился. Последние сообщения:'
+  journalctl -u "$RECEIVER_UNIT" -n 25 --no-pager >&2 || true
+  fail "Проверьте состояние: sudo systemctl status $RECEIVER_UNIT"
+fi
 systemctl enable --now "$PANEL_UNIT"
-curl --insecure --fail --silent --show-error --max-time 10 https://127.0.0.1/health >/dev/null
+panel_ready=false
+for attempt in {1..20}; do
+  if curl --insecure --fail --silent --max-time 2 "https://127.0.0.1:$panel_port/health" >/dev/null; then
+    panel_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$panel_ready" != true ]]; then
+  note 'Панель не запустилась. Последние сообщения:'
+  journalctl -u "$PANEL_UNIT" -n 25 --no-pager >&2 || true
+  fail "Проверьте состояние: sudo systemctl status $PANEL_UNIT"
+fi
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'AWG container start time changed during installation; investigate immediately.'
-note "Готово: https://$public_endpoint/ (самоподписанный сертификат)."
-note 'VPN не перезапускали. Если панель недоступна, проверьте TCP-порт 443 в фаерволе.'
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+  note "Открываем TCP-порт $panel_port в UFW для веб-панели..."
+  ufw allow "$panel_port/tcp" comment 'Nait-AWG web panel'
+fi
+note "Готово: https://$public_endpoint:$panel_port/ (самоподписанный сертификат)."
+note 'VPN не перезапускали. Если панель недоступна, проверьте сетевой экран хостинга.'
