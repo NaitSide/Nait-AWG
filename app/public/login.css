@@ -73,6 +73,7 @@
 }
 
 .login-card label {
+  position: relative;
   display: grid;
   gap: 7px;
   color: rgba(139, 148, 158, 0.92);
@@ -80,6 +81,40 @@
   line-height: 1.2;
   font-weight: 500;
 }
+
+.login-validation-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 9px);
+  left: 50%;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  transform: translateX(-50%);
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 171, 179, 0.38);
+  border-radius: 8px;
+  background: #302d31;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+}
+
+.login-validation-popover::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  border-top: 1px solid rgba(255, 171, 179, 0.38);
+  border-left: 1px solid rgba(255, 171, 179, 0.38);
+  background: #302d31;
+}
+
+.login-validation-popover[hidden] { display: none; }
 
 .login-card input {
   width: 100%;

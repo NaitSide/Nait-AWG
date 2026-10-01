@@ -22,6 +22,38 @@ let filteredCount = allRows.length;
 let accessRequestId = 0;
 if (selectedRow) page = Math.floor(allRows.indexOf(selectedRow) / pageSize) + 1;
 
+const fieldValidationPopover = document.createElement('span');
+fieldValidationPopover.className = 'field-validation-popover';
+fieldValidationPopover.setAttribute('role', 'alert');
+fieldValidationPopover.hidden = true;
+
+function hideFieldValidation() {
+  fieldValidationPopover.hidden = true;
+  fieldValidationPopover.remove();
+}
+
+function fieldValidationMessage(field) {
+  if (field.validity.valueMissing) return 'Заполните это поле.';
+  if (field.validity.tooShort) return `Минимальное количество символов: ${field.minLength}. Сейчас: ${field.value.length}.`;
+  if (field.validity.patternMismatch) return 'Проверьте формат введённого значения.';
+  return 'Проверьте введённое значение.';
+}
+
+document.addEventListener('invalid', event => {
+  const field = event.target;
+  if (!(field instanceof HTMLInputElement) && !(field instanceof HTMLTextAreaElement)) return;
+  event.preventDefault();
+  if (field.form && field !== field.form.querySelector(':invalid')) return;
+  const anchor = field.closest('label');
+  if (!anchor) return;
+  hideFieldValidation();
+  fieldValidationPopover.textContent = fieldValidationMessage(field);
+  anchor.append(fieldValidationPopover);
+  fieldValidationPopover.hidden = false;
+  field.focus();
+}, true);
+document.addEventListener('input', hideFieldValidation);
+
 function setPowerState(state, message = '', checking = false) {
   powerButton.dataset.state = checking ? '' : state || '';
   powerButton.classList.toggle('danger', state === 'on');
@@ -789,6 +821,7 @@ function adminPasswordIsStrong(password) {
 }
 
 function showAdminPasswordRequirement(show) {
+  if (show) hideFieldValidation();
   adminPasswordRequirement.hidden = !show;
   document.getElementById('adminNewPassword').setAttribute('aria-invalid', String(show));
 }

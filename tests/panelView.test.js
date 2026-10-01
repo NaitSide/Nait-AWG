@@ -71,6 +71,7 @@ test('client row exposes a provisional access state for the checking button', ()
   assert.match(html, /panel\.js\?v=21/);
   assert.match(html, /admin-password-popover/);
   assert.match(html, /adminPasswordRequirement/);
+  assert.match(html, /novalidate/);
 });
 
 test('status badge opens a traffic modal without changing grey status colors', () => {
