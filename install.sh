@@ -136,13 +136,19 @@ panel_port=$((10#$panel_port))
 [[ -z "$(ss -H -ltn "( sport = :$panel_port )")" ]] || fail "TCP-порт $panel_port уже занят. Запустите установку заново и выберите другой."
 admin_password="${NAIT_AWG_ADMIN_PASSWORD:-}"
 if [[ -z "$admin_password" && -r /dev/tty ]]; then
-  read -r -s -p 'Пароль администратора панели (от 12 символов): ' admin_password </dev/tty
+  read -r -s -p 'Пароль администратора (от 12 символов: заглавная и строчная буквы, цифра и спецсимвол): ' admin_password </dev/tty
   printf '\n' >&2
   read -r -s -p 'Повторите пароль: ' admin_password_repeat </dev/tty
   printf '\n' >&2
   [[ "$admin_password" == "$admin_password_repeat" ]] || fail 'Пароли не совпадают. Запустите установку заново.'
 fi
-[[ "${#admin_password}" -ge 12 && "$admin_password" =~ ^[a-zA-Z0-9@#%^*_.!+-]+$ ]] || fail 'Admin password must be 12+ characters and use letters, digits or @#%^*_.!+-.'
+password_error='Пароль слишком простой. Используйте от 12 до 256 символов: минимум одну заглавную и одну строчную латинскую букву, одну цифру и один специальный символ @#%^*_.!+-.'
+[[ "${#admin_password}" -ge 12 && "${#admin_password}" -le 256 ]] || fail "$password_error"
+[[ "$admin_password" =~ ^[a-zA-Z0-9@#%^*_.!+-]+$ ]] || fail "$password_error"
+[[ "$admin_password" =~ [a-z] ]] || fail "$password_error"
+[[ "$admin_password" =~ [A-Z] ]] || fail "$password_error"
+[[ "$admin_password" =~ [0-9] ]] || fail "$password_error"
+[[ "$admin_password" =~ [-@#%^*_.!+] ]] || fail "$password_error"
 
 # Recheck before writing; a running VPN is not sufficient if its config/profile is stale.
 "$node" "$SOURCE_DIR/scripts/selfhost-preflight.js" >/dev/null

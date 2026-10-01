@@ -39,6 +39,18 @@ test('admin password change stores a hash and invalidates previous sessions', as
   assert.equal(loginResponse.status, 200);
   const sessionCookie = loginResponse.headers.get('set-cookie').split(';', 1)[0];
 
+  const weakPasswordResponse = await fetch(`${origin}/api/admin/password`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Cookie: sessionCookie, Origin: origin },
+    body: JSON.stringify({
+      currentPassword: 'InitialPass123!',
+      newPassword: 'aaaaaaaaaaaa',
+      repeatPassword: 'aaaaaaaaaaaa'
+    })
+  });
+  assert.equal(weakPasswordResponse.status, 400);
+  assert.equal((await weakPasswordResponse.json()).code, 'invalid_new_password');
+
   const changeResponse = await fetch(`${origin}/api/admin/password`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Cookie: sessionCookie, Origin: origin },

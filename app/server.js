@@ -234,8 +234,15 @@ app.patch('/api/admin/password', requireAuth, async (req, res) => {
   const newPassword = String(req.body?.newPassword || '');
   const repeatPassword = String(req.body?.repeatPassword || '');
   if (!passwordMatches(currentPassword)) return res.status(401).json({ code: 'invalid_current_password', message: 'Текущий пароль указан неверно.' });
-  if (newPassword.length < 12 || newPassword.length > 256 || !/^[a-zA-Z0-9@#%^*_.!+\-]+$/.test(newPassword)) {
-    return res.status(400).json({ code: 'invalid_new_password', message: 'Новый пароль: от 12 до 256 символов; разрешены буквы, цифры и @#%^*_.!+-.' });
+  const passwordIsStrong = newPassword.length >= 12
+    && newPassword.length <= 256
+    && /^[a-zA-Z0-9@#%^*_.!+\-]+$/.test(newPassword)
+    && /[a-z]/.test(newPassword)
+    && /[A-Z]/.test(newPassword)
+    && /[0-9]/.test(newPassword)
+    && /[@#%^*_.!+\-]/.test(newPassword);
+  if (!passwordIsStrong) {
+    return res.status(400).json({ code: 'invalid_new_password', message: 'Пароль слишком простой. Используйте от 12 до 256 символов: минимум одну заглавную и одну строчную латинскую букву, одну цифру и один специальный символ @#%^*_.!+-.' });
   }
   if (newPassword !== repeatPassword) return res.status(400).json({ code: 'password_mismatch', message: 'Новые пароли не совпадают.' });
   if (passwordMatches(newPassword)) return res.status(400).json({ code: 'password_unchanged', message: 'Новый пароль совпадает с текущим.' });
