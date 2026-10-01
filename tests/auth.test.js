@@ -35,6 +35,16 @@ test('admin password change stores a hash and invalidates previous sessions', as
     body: JSON.stringify({ login: 'admin', password })
   });
 
+  const browserLoginResponse = await fetch(`${origin}/login`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ username: 'admin', password: 'InitialPass123!' })
+  });
+  assert.equal(browserLoginResponse.status, 303);
+  assert.equal(browserLoginResponse.headers.get('location'), '/panel');
+  assert.match(browserLoginResponse.headers.get('set-cookie'), /^nait_awg_session=/);
+
   const loginResponse = await login('InitialPass123!');
   assert.equal(loginResponse.status, 200);
   const sessionCookie = loginResponse.headers.get('set-cookie').split(';', 1)[0];

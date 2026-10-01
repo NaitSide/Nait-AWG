@@ -768,6 +768,7 @@ document.getElementById('accessConfirm').addEventListener('click', async () => {
 const adminAccessCard = document.getElementById('adminAccessCard');
 const adminAccessToggle = document.getElementById('adminAccessToggle');
 const adminPasswordForm = document.getElementById('adminPasswordForm');
+const adminPasswordRequirement = document.getElementById('adminPasswordRequirement');
 const adminPasswordFields = [
   document.getElementById('adminCurrentPassword'),
   document.getElementById('adminNewPassword'),
@@ -780,12 +781,25 @@ function setAdminPasswordStatus(message, type = '') {
   status.className = `admin-access-status${type ? ` ${type}` : ''}`;
 }
 
+function adminPasswordIsStrong(password) {
+  return password.length >= 12 && password.length <= 256
+    && /^[a-zA-Z0-9@#%^*_.!+\-]+$/.test(password)
+    && /[a-z]/.test(password) && /[A-Z]/.test(password)
+    && /[0-9]/.test(password) && /[@#%^*_.!+\-]/.test(password);
+}
+
+function showAdminPasswordRequirement(show) {
+  adminPasswordRequirement.hidden = !show;
+  document.getElementById('adminNewPassword').setAttribute('aria-invalid', String(show));
+}
+
 function setAdminAccessEditing(editing) {
   adminAccessCard.classList.toggle('editing', editing);
   adminAccessToggle.setAttribute('aria-pressed', String(editing));
   document.getElementById('adminAccessMode').textContent = editing ? 'Edit mode' : 'Read-only';
   adminPasswordFields.forEach(input => { input.disabled = !editing; });
   if (!editing) adminPasswordFields.forEach(input => { input.value = ''; });
+  showAdminPasswordRequirement(false);
   setAdminPasswordStatus('');
   if (editing) document.getElementById('adminCurrentPassword').focus();
 }
@@ -794,12 +808,26 @@ adminAccessToggle.addEventListener('click', () => {
   setAdminAccessEditing(adminAccessToggle.getAttribute('aria-pressed') !== 'true');
 });
 
+document.getElementById('adminNewPassword').addEventListener('input', () => showAdminPasswordRequirement(false));
+
 adminPasswordForm.addEventListener('submit', async event => {
   event.preventDefault();
   const currentPassword = document.getElementById('adminCurrentPassword');
   const newPassword = document.getElementById('adminNewPassword');
   const repeatPassword = document.getElementById('adminRepeatPassword');
   const submit = document.getElementById('adminPasswordSubmit');
+  if (!currentPassword.value) {
+    setAdminPasswordStatus('Укажите текущий пароль.', 'error');
+    currentPassword.focus();
+    return;
+  }
+  if (!adminPasswordIsStrong(newPassword.value)) {
+    setAdminPasswordStatus('Новый пароль не соответствует требованиям.', 'error');
+    showAdminPasswordRequirement(true);
+    newPassword.focus();
+    return;
+  }
+  showAdminPasswordRequirement(false);
   if (newPassword.value !== repeatPassword.value) {
     setAdminPasswordStatus('Новые пароли не совпадают.', 'error');
     repeatPassword.focus();

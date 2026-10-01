@@ -4,14 +4,34 @@
 # This script never starts, stops, restarts, creates or replaces the AWG container.
 set -Eeuo pipefail
 
-if [[ "${1:-}" != install && "${1:-}" != audit ]]; then
-  [[ $# -eq 0 ]] || { printf 'Использование: sudo bash install.sh [audit|install]\n' >&2; exit 2; }
+if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit ]]; then
+  [[ $# -eq 0 ]] || { printf 'Использование: sudo bash install.sh [audit|install|update]\n' >&2; exit 2; }
   [[ "${EUID}" -eq 0 ]] || { printf 'Запустите через sudo.\n' >&2; exit 1; }
   command -v curl >/dev/null 2>&1 || { printf 'Нужен curl.\n' >&2; exit 1; }
   command -v tar >/dev/null 2>&1 || { printf 'Нужен tar.\n' >&2; exit 1; }
 
-  if [[ -e /opt/naitlab/nait_awg || -e /etc/systemd/system/nait-awg-selfhost.service ]]; then
-    printf 'Nait-AWG уже установлен. Повторная установка остановлена; работающая панель не изменена.\n' >&2
+  requested_action="${NAIT_AWG_ACTION:-}"
+  if [[ -z "$requested_action" ]]; then
+    [[ -r /dev/tty ]] || { printf 'Интерактивное меню недоступно. Укажите NAIT_AWG_ACTION=install или NAIT_AWG_ACTION=update.\n' >&2; exit 1; }
+    printf '\nВыберите действие:\n' >&2
+    printf '  1) Установить только веб-панель Nait-AWG\n' >&2
+    printf '  2) Установить AmneziaWG 3.1 + веб-панель Nait-AWG — (в разработке)\n' >&2
+    printf '  3) Обновить веб-интерфейс Nait-AWG\n\n' >&2
+    read -r -p 'Введите номер [1-3]: ' requested_action </dev/tty
+  fi
+  case "$requested_action" in
+    1|install) requested_action=install ;;
+    2|full) printf 'Этот режим пока находится в разработке. Сервер не изменён.\n' >&2; exit 0 ;;
+    3|update) requested_action=update ;;
+    *) printf 'Неизвестный вариант. Выберите 1, 2 или 3.\n' >&2; exit 2 ;;
+  esac
+
+  if [[ "$requested_action" == install && ( -e /opt/naitlab/nait_awg || -e /etc/systemd/system/nait-awg-selfhost.service ) ]]; then
+    printf 'Nait-AWG уже установлен. Выберите пункт 3, чтобы обновить веб-панель.\n' >&2
+    exit 1
+  fi
+  if [[ "$requested_action" == update && ! -d /opt/naitlab/nait_awg ]]; then
+    printf 'Установка Nait-AWG не найдена. Сначала выберите пункт 1.\n' >&2
     exit 1
   fi
 
@@ -26,7 +46,11 @@ if [[ "${1:-}" != install && "${1:-}" != audit ]]; then
   cleanup_download() { if [[ "$download_stage" == /tmp/nait-awg-download.* && -d "$download_stage" ]]; then rm -rf -- "$download_stage"; fi; }
   trap cleanup_download EXIT
 
-  printf 'Загружаем Nait-AWG с GitHub...\n' >&2
+  if [[ "$requested_action" == update ]]; then
+    printf 'Загружаем обновление Nait-AWG с GitHub...\n' >&2
+  else
+    printf 'Загружаем Nait-AWG с GitHub...\n' >&2
+  fi
   curl --fail --location --retry 3 --silent --show-error \
     https://github.com/NaitSide/Nait-AWG/archive/refs/heads/main.tar.gz \
     -o "$download_stage/source.tar.gz"
@@ -37,7 +61,7 @@ if [[ "${1:-}" != install && "${1:-}" != audit ]]; then
     exit 1
   }
   printf 'Проверяем совместимость сервера с AmneziaWG...\n' >&2
-  bash "$source_dir/install.sh" install
+  bash "$source_dir/install.sh" "$requested_action"
   exit 0
 fi
 
@@ -48,10 +72,35 @@ readonly RECEIVER_UNIT=nait-awg-receiver-selfhost.service
 readonly NODE_ARCHIVE=node-v24.20.0-linux-x64.tar.xz
 readonly NODE_SHA256=2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2
 stage=''
+update_backup=''
+update_active=false
+update_committed=false
+update_items=()
 
 fail() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*" >&2; }
-cleanup() { if [[ "$stage" == /tmp/nait-awg.* && -d "$stage" ]]; then rm -rf -- "$stage"; fi; }
+rollback_update() {
+  [[ "$update_active" == true && "$update_committed" != true ]] || return 0
+  set +e
+  note 'Обновление не завершилось. Возвращаем предыдущую версию панели...'
+  for item in "${update_items[@]}"; do
+    mkdir -p -- "$update_backup/failed/$(dirname -- "$item")"
+    if [[ -e "$INSTALL_DIR/$item" ]]; then mv -- "$INSTALL_DIR/$item" "$update_backup/failed/$item"; fi
+    if [[ -e "$update_backup/old/$item" ]]; then
+      mkdir -p -- "$INSTALL_DIR/$(dirname -- "$item")"
+      mv -- "$update_backup/old/$item" "$INSTALL_DIR/$item"
+    fi
+  done
+  if [[ -f "$update_backup/units/$PANEL_UNIT" ]]; then cp -a -- "$update_backup/units/$PANEL_UNIT" "/etc/systemd/system/$PANEL_UNIT"; fi
+  if [[ -f "$update_backup/units/$RECEIVER_UNIT" ]]; then cp -a -- "$update_backup/units/$RECEIVER_UNIT" "/etc/systemd/system/$RECEIVER_UNIT"; fi
+  systemctl daemon-reload
+  systemctl restart "$RECEIVER_UNIT" "$PANEL_UNIT"
+  note "Предыдущая версия возвращена. Диагностические файлы сохранены: $update_backup"
+}
+cleanup() {
+  rollback_update
+  if [[ "$stage" == /tmp/nait-awg.* && -d "$stage" ]]; then rm -rf -- "$stage"; fi
+}
 trap cleanup EXIT
 
 [[ "${EUID}" -eq 0 ]] || fail 'Run via sudo/root.'
@@ -69,8 +118,11 @@ if [[ "${1:-}" == install ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "Nait-AWG уже установлен: $INSTALL_DIR. Повторная установка остановлена; файлы не изменены."
   [[ ! -e "/etc/systemd/system/$PANEL_UNIT" && ! -e "/etc/systemd/system/$RECEIVER_UNIT" ]] || fail 'Обнаружены службы Nait-AWG. Повторная установка остановлена; проверьте существующую установку.'
   [[ -z "$(ss -H -ltn '( sport = :42842 )')" ]] || fail 'Внутренний TCP-порт 42842 уже занят. Проверьте, не установлен ли Nait-AWG.'
+elif [[ "${1:-}" == update ]]; then
+  [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" && -f "$INSTALL_DIR/receiver/.env" ]] || fail 'Рабочая установка Nait-AWG не найдена или повреждена. Обновление остановлено.'
+  [[ -f "/etc/systemd/system/$PANEL_UNIT" && -f "/etc/systemd/system/$RECEIVER_UNIT" ]] || fail 'Службы Nait-AWG не найдены. Обновление остановлено.'
 elif [[ "${1:-}" != audit ]]; then
-  printf 'Использование: sudo bash install.sh [audit|install]\n' >&2
+  printf 'Использование: sudo bash install.sh [audit|install|update]\n' >&2
   exit 2
 fi
 
@@ -95,6 +147,76 @@ IFS=$'\t' read -r awg_container awg_subnet awg_started_at < <("$node" "$SOURCE_D
 [[ "$awg_container" =~ ^amnezia-awg2?$ && "$awg_subnet" =~ ^[0-9./]+$ && "$awg_started_at" =~ ^[0-9TZ:.-]+$ ]] || fail 'Invalid preflight result.'
 note "AmneziaWG 3.1 найден: $awg_container, $awg_subnet. Работающий VPN не трогаем."
 if [[ "${1:-}" == audit ]]; then exit 0; fi
+
+if [[ "${1:-}" == update ]]; then
+  note 'Готовим обновление веб-панели. Пользователи, пароль и настройки будут сохранены...'
+  install -d -m 0750 "$stage/receiver" "$stage/runtime"
+  cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$stage/"
+  cp -R -- "$SOURCE_DIR/vendor/receiver/." "$stage/receiver/"
+  cp -R -- "$stage/node-v24.20.0-linux-x64/." "$stage/runtime/"
+  note 'Устанавливаем библиотеки веб-панели...'
+  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" install --prefix "$stage" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+  note 'Устанавливаем библиотеки внутреннего сервиса...'
+  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+  rm -f -- "$stage/$NODE_ARCHIVE"
+  rm -rf -- "$stage/node-v24.20.0-linux-x64"
+  chown -R root:root "$stage/app" "$stage/runtime" "$stage/receiver" "$stage/package.json"
+  chmod 0755 "$stage/app" "$stage/runtime" "$stage/receiver"
+
+  update_backup="$(mktemp -d /opt/naitlab/.nait-awg-update.XXXXXX)"
+  install -d -m 0700 "$update_backup/old" "$update_backup/units"
+  cp -a -- "/etc/systemd/system/$PANEL_UNIT" "$update_backup/units/$PANEL_UNIT"
+  cp -a -- "/etc/systemd/system/$RECEIVER_UNIT" "$update_backup/units/$RECEIVER_UNIT"
+  update_candidates=(app runtime node_modules package.json package-lock.json receiver/src receiver/node_modules receiver/package.json receiver/package-lock.json receiver/README.md)
+  update_items=()
+  update_active=true
+  for item in "${update_candidates[@]}"; do
+    [[ -e "$stage/$item" ]] || continue
+    update_items+=("$item")
+    mkdir -p -- "$update_backup/old/$(dirname -- "$item")" "$INSTALL_DIR/$(dirname -- "$item")"
+    if [[ -e "$INSTALL_DIR/$item" ]]; then mv -- "$INSTALL_DIR/$item" "$update_backup/old/$item"; fi
+    mv -- "$stage/$item" "$INSTALL_DIR/$item"
+  done
+  install -m 0644 "$SOURCE_DIR/deploy/nait-awg-selfhost.service" "/etc/systemd/system/$PANEL_UNIT"
+  install -m 0644 "$SOURCE_DIR/deploy/nait-awg-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
+  systemctl daemon-reload
+
+  note 'Перезапускаем внутренний сервис панели...'
+  systemctl restart "$RECEIVER_UNIT"
+  receiver_ready=false
+  for attempt in {1..20}; do
+    if curl --fail --silent --max-time 2 http://127.0.0.1:42842/health >/dev/null; then
+      receiver_ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "$receiver_ready" == true ]] || fail "Внутренний сервис не запустился. Проверьте: sudo systemctl status $RECEIVER_UNIT"
+
+  panel_port="$(sed -n 's/^PORT=//p' "$INSTALL_DIR/.env" | head -n 1)"
+  public_endpoint="$(sed -n 's/^PUBLIC_ENDPOINT_HOST=//p' "$INSTALL_DIR/.env" | head -n 1)"
+  [[ "$panel_port" =~ ^[0-9]{1,5}$ ]] || fail 'Не удалось прочитать порт существующей панели.'
+  note 'Перезапускаем веб-панель...'
+  systemctl restart "$PANEL_UNIT"
+  panel_ready=false
+  for attempt in {1..20}; do
+    if curl --insecure --fail --silent --max-time 2 "https://127.0.0.1:$panel_port/health" >/dev/null; then
+      panel_ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "$panel_ready" == true ]] || fail "Панель не запустилась. Проверьте: sudo systemctl status $PANEL_UNIT"
+  [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'Контейнер AmneziaWG изменился во время обновления. Требуется проверка.'
+
+  update_committed=true
+  update_active=false
+  rm -rf -- "$update_backup"
+  update_backup=''
+  note "Nait-AWG обновлён: https://$public_endpoint:$panel_port/"
+  note 'Пользователи, пароль, порт и настройки сохранены. VPN не перезапускался.'
+  exit 0
+fi
 
 public_endpoint="${NAIT_AWG_PUBLIC_ENDPOINT:-}"
 if [[ -z "$public_endpoint" && -r /dev/tty ]]; then

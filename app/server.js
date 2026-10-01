@@ -140,7 +140,7 @@ function sendError(res, error) {
 }
 
 function credentialsMatch(body) {
-  return stringsMatch(body?.login, adminLogin) && passwordMatches(body?.password);
+  return stringsMatch(body?.username ?? body?.login, adminLogin) && passwordMatches(body?.password);
 }
 
 function issueSession(res) {
