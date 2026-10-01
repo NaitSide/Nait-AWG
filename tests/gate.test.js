@@ -7,7 +7,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { createSoloService } = require('../app/services/soloService');
+const { createAwgService } = require('../app/services/awgService');
 
 const ADDRESS = '10.8.1.42/32';
 const GATE_TOKEN = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -72,9 +72,9 @@ async function fixture() {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-gate-test-'));
   const env = { RECEIVER_URL: `http://127.0.0.1:${server.address().port}`,
-    SOLO_DATA_KEY: crypto.randomBytes(32).toString('base64'), SOLO_DATA_PATH: path.join(directory, 'clients.db'),
+    NAIT_AWG_DATA_KEY: crypto.randomBytes(32).toString('base64'), NAIT_AWG_DATA_PATH: path.join(directory, 'clients.db'),
     AWG_GATE_WRITE_TOKEN: GATE_TOKEN };
-  return { calls, state, env, service: createSoloService(env),
+  return { calls, state, env, service: createAwgService(env),
     close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
@@ -86,7 +86,7 @@ test('OFF and ON preserve the peer and restore its exact address after independe
     assert.deepEqual(item.state.runtime, []);
     assert.deepEqual(item.state.persistent, []);
     assert.equal((await item.service.listPeers())[0].address, ADDRESS);
-    assert.deepEqual(await createSoloService(item.env).readPeerAccess(FINGERPRINT), { state: 'off', address: ADDRESS });
+    assert.deepEqual(await createAwgService(item.env).readPeerAccess(FINGERPRINT), { state: 'off', address: ADDRESS });
     assert.deepEqual(await item.service.setPeerAccess(FINGERPRINT, true), { state: 'on', address: ADDRESS });
     assert.deepEqual(item.state.runtime, [ADDRESS]);
     assert.deepEqual(item.state.persistent, [ADDRESS]);

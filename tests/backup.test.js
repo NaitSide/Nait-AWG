@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
 const { encryptBackup, decryptBackup, plainBackup } = require('../app/services/backupService');
-const { createSoloService } = require('../app/services/soloService');
+const { createAwgService } = require('../app/services/awgService');
 
 const password = 'a-long-test-password-123';
 const config = `[Interface]\nPrivateKey = ${crypto.randomBytes(32).toString('base64')}\nAddress = 10.8.1.1/24\nListenPort = 55424\nJc = 4\nJmin = 40\nJmax = 70\n\n[Peer]\nPublicKey = ${crypto.randomBytes(32).toString('base64')}\nAllowedIPs = 10.8.1.2/32\n`;
@@ -38,17 +38,17 @@ test('plain backup is readable JSON without a password', async () => {
 
 test('service snapshot contains an intact SQLite database, metadata and exact AWG config', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-backup-test-'));
-  const env = { SOLO_DATA_KEY: crypto.randomBytes(32).toString('base64'),
-    SOLO_DATA_PATH: path.join(directory, 'clients.db'), PUBLIC_ENDPOINT_HOST: 'vpn.example.test', CLIENT_DNS: '9.9.9.9' };
+  const env = { NAIT_AWG_DATA_KEY: crypto.randomBytes(32).toString('base64'),
+    NAIT_AWG_DATA_PATH: path.join(directory, 'clients.db'), PUBLIC_ENDPOINT_HOST: 'vpn.example.test', CLIENT_DNS: '9.9.9.9' };
   fs.writeFileSync(path.join(directory, 'peer-notes.json'), JSON.stringify({ version: 1,
     notes: { aabbccddeeff: 'test note' }, telegrams: { aabbccddeeff: '@example' } }));
   const usagePublicKey = crypto.randomBytes(32).toString('base64');
-  const service = createSoloService(env, { readAwgConfig: async () => config,
+  const service = createAwgService(env, { readAwgConfig: async () => config,
     readUsagePeers: async () => ({ status: 'ok', peers: [{ publicKey: usagePublicKey, transferRx: 100, transferTx: 200 }] }) });
-  const fixtureDb = new DatabaseSync(env.SOLO_DATA_PATH);
+  const fixtureDb = new DatabaseSync(env.NAIT_AWG_DATA_PATH);
   fixtureDb.prepare(`INSERT INTO clients (client_id, label, receiver_label, public_key_fingerprint,
     address, encrypted_config, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-    'solo-test', 'iPhone_RED', 'iPhone_RED', 'aabbccddeeff', '10.8.1.25/32', 'fixture', 'active', '2026-09-23T00:00:00.000Z');
+    'awg-test', 'iPhone_RED', 'iPhone_RED', 'aabbccddeeff', '10.8.1.25/32', 'fixture', 'active', '2026-09-23T00:00:00.000Z');
   const usageFingerprint = crypto.createHash('sha256').update(usagePublicKey).digest('hex').slice(0, 12);
   fixtureDb.prepare(`INSERT INTO clients (client_id, label, receiver_label, public_key_fingerprint,
     address, encrypted_config, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
@@ -58,7 +58,7 @@ test('service snapshot contains an intact SQLite database, metadata and exact AW
   const snapshot = await decryptBackup(envelope, password);
   assert.equal(snapshot.awg.config, config);
   assert.equal(snapshot.awg.configFile, 'awg0.conf');
-  assert.equal(snapshot.panel.dataKey, env.SOLO_DATA_KEY);
+  assert.equal(snapshot.panel.dataKey, env.NAIT_AWG_DATA_KEY);
   assert.equal(snapshot.panel.clientDefaults.endpointHost, 'vpn.example.test');
   assert.equal(snapshot.panel.clientDefaults.dns, '9.9.9.9');
   assert.equal(snapshot.panel.metadata.notes.aabbccddeeff, 'test note');
@@ -86,9 +86,9 @@ test('service snapshot contains an intact SQLite database, metadata and exact AW
 
 test('service rejects an AWG config that changes during snapshot', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-backup-race-test-'));
-  const env = { SOLO_DATA_KEY: crypto.randomBytes(32).toString('base64'), SOLO_DATA_PATH: path.join(directory, 'clients.db') };
+  const env = { NAIT_AWG_DATA_KEY: crypto.randomBytes(32).toString('base64'), NAIT_AWG_DATA_PATH: path.join(directory, 'clients.db') };
   let reads = 0;
-  const service = createSoloService(env, { readAwgConfig: async () => { reads += 1; return reads === 1 ? config : config + '# changed\n'; },
+  const service = createAwgService(env, { readAwgConfig: async () => { reads += 1; return reads === 1 ? config : config + '# changed\n'; },
     readUsagePeers: async () => ({ status: 'ok', peers: [] }) });
   await assert.rejects(service.createBackup(password), { code: 'backup_state_changed' });
   assert.equal(reads, 2);

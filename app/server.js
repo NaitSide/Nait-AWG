@@ -7,8 +7,8 @@ const fs = require('fs');
 const https = require('https');
 const express = require('express');
 const path = require('path');
-const { createHttpError, createSoloService } = require('./services/soloService');
-const { renderPanel: renderSoloPanel } = require('./views/panelView');
+const { createHttpError, createAwgService } = require('./services/awgService');
+const { renderPanel: renderAwgPanel } = require('./views/panelView');
 
 const app = express();
 const host = process.env.HOST || '127.0.0.1';
@@ -17,15 +17,15 @@ const tlsKeyPath = String(process.env.TLS_KEY_PATH || '').trim();
 const tlsCertPath = String(process.env.TLS_CERT_PATH || '').trim();
 const tlsEnabled = Boolean(tlsKeyPath || tlsCertPath);
 const cookieSecure = tlsEnabled || String(process.env.COOKIE_SECURE || '').trim().toLowerCase() !== 'false';
-const sessionSecret = Buffer.from(String(process.env.SOLO_SESSION_SECRET || ''), 'base64');
-const sessionTtlSeconds = Number(process.env.SOLO_SESSION_TTL_SECONDS || 12 * 60 * 60);
-const adminLogin = String(process.env.SOLO_ADMIN_LOGIN || 'NaitSide').trim();
-const adminPassword = String(process.env.SOLO_ADMIN_PASSWORD || '');
-const solo = createSoloService();
+const sessionSecret = Buffer.from(String(process.env.NAIT_AWG_SESSION_SECRET || ''), 'base64');
+const sessionTtlSeconds = Number(process.env.NAIT_AWG_SESSION_TTL_SECONDS || 12 * 60 * 60);
+const adminLogin = String(process.env.NAIT_AWG_ADMIN_LOGIN || 'NaitSide').trim();
+const adminPassword = String(process.env.NAIT_AWG_ADMIN_PASSWORD || '');
+const panelService = createAwgService();
 
-if (sessionSecret.length < 32) throw new Error('SOLO_SESSION_SECRET must contain at least 32 random bytes encoded as base64');
-if (!Number.isInteger(sessionTtlSeconds) || sessionTtlSeconds < 3600 || sessionTtlSeconds > 90 * 24 * 60 * 60) throw new Error('SOLO_SESSION_TTL_SECONDS must be between 3600 and 7776000');
-if (adminPassword.length < 12) throw new Error('SOLO_ADMIN_PASSWORD must contain at least 12 characters');
+if (sessionSecret.length < 32) throw new Error('NAIT_AWG_SESSION_SECRET must contain at least 32 random bytes encoded as base64');
+if (!Number.isInteger(sessionTtlSeconds) || sessionTtlSeconds < 3600 || sessionTtlSeconds > 90 * 24 * 60 * 60) throw new Error('NAIT_AWG_SESSION_TTL_SECONDS must be between 3600 and 7776000');
+if (adminPassword.length < 12) throw new Error('NAIT_AWG_ADMIN_PASSWORD must contain at least 12 characters');
 if (tlsEnabled && (!tlsKeyPath || !tlsCertPath)) throw new Error('TLS_KEY_PATH and TLS_CERT_PATH must be set together');
 
 app.disable('x-powered-by');
@@ -53,7 +53,7 @@ function readCookies(header) {
 }
 
 function isAuthenticated(req) {
-  const token = readCookies(req.headers.cookie).solo_session;
+  const token = readCookies(req.headers.cookie).nait_awg_session;
   const [expiresAt, nonce, signature] = String(token || '').split('.');
   if (!expiresAt || !nonce || !signature || Number(expiresAt) < Date.now()) return false;
   const expected = sign(`${expiresAt}.${nonce}`);
@@ -72,7 +72,7 @@ function requirePageAuth(req, res, next) {
 
 function sendError(res, error) {
   const status = error.status || 500;
-  console.error('[nait-awg-solo]', error.code || 'internal_error', error.message);
+  console.error('[nait-awg]', error.code || 'internal_error', error.message);
   res.status(status).json({ code: error.code || 'internal_error', message: status < 500 ? error.message : 'Внутренняя ошибка панели.' });
 }
 
@@ -91,7 +91,7 @@ function issueSession(res) {
   const expiresAt = String(Date.now() + sessionTtlSeconds * 1000);
   const nonce = crypto.randomBytes(18).toString('base64url');
   const token = `${expiresAt}.${nonce}.${sign(`${expiresAt}.${nonce}`)}`;
-  res.setHeader('Set-Cookie', `solo_session=${token}; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=${sessionTtlSeconds}`);
+  res.setHeader('Set-Cookie', `nait_awg_session=${token}; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=${sessionTtlSeconds}`);
 }
 
 function escapeHtml(value) {
@@ -108,7 +108,7 @@ function renderPanel(peers, profile, notice = '') {
       : '<span class="muted">Существующий peer</span>';
     return `<tr><td><strong>${escapeHtml(peer.label)}</strong><small>${escapeHtml(peer.publicKeyFingerprint)}</small></td><td>${escapeHtml(peer.address)}</td><td>${escapeHtml(peer.state === 'active' ? 'Активен' : 'Неактивен')}</td><td class="controls">${controls}${remove}</td></tr>`;
   }).join('');
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nait AWG Solo</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet"><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-width:320px;color:#e6edf3;background:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),#0d0b14;background-size:48px 48px;font:14px Montserrat,system-ui,sans-serif}main{width:min(1100px,calc(100% - 32px));margin:42px auto}.panel{overflow:hidden;margin:18px 0;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:linear-gradient(145deg,rgba(28,30,39,.96),rgba(17,15,24,.98))}header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:22px;border-bottom:1px solid rgba(255,255,255,.08)}h1,h2{margin:0}p,.muted,small{color:#8b949e}small{display:block;margin-top:5px;font-size:11px}.new-peer{display:flex;gap:10px;align-items:end;padding:18px}.new-peer label{display:grid;gap:7px;flex:1;color:#aeb4bd;font-size:12px}input{height:42px;padding:0 12px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#0d0b14;color:#e6edf3;font:inherit}.button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid #4d836f;border-radius:9px;background:#259b76;color:#f3fffb;font:600 12px Montserrat,sans-serif;text-decoration:none;cursor:pointer}.button.danger{border-color:#854656;background:#4a2430}table{width:100%;border-collapse:collapse}th,td{padding:14px 18px;text-align:left;border-top:1px solid rgba(255,255,255,.08)}th{color:#8b949e;font-size:11px}.controls{display:flex;flex-wrap:wrap;gap:7px}.controls form{margin:0}.notice{margin:18px 0;padding:12px 15px;border:1px solid #367b67;border-radius:10px;background:#173c34;color:#9ee8d3}@media(max-width:700px){main{width:min(100% - 20px,1100px);margin:18px auto}header,.new-peer{align-items:stretch;flex-direction:column}.controls{min-width:210px}table{min-width:700px}.panel{overflow:auto}}</style></head><body><main><header><div><h1>Nait AWG Solo</h1><p>Frankfurt · ${escapeHtml(profile.interface || 'awg0')} · ${peers.length} peer</p></div><form method="post" action="/logout"><button class="button danger" type="submit">Выйти</button></form></header>${notice ? `<div class="notice">${escapeHtml(notice)}</div>` : ''}<section class="panel"><header><div><h2>Доступы</h2><p>Solo управляет только peer, созданными этой панелью.</p></div></header><form class="new-peer" method="post" action="/panel/peers"><label>Имя нового клиента<input name="label" maxlength="80" required placeholder="например, iPhone-Nikita"></label><button class="button" type="submit">Выдать доступ</button></form><table><thead><tr><th>КЛИЕНТ</th><th>АДРЕС</th><th>СТАТУС</th><th>ДЕЙСТВИЯ</th></tr></thead><tbody>${rows}</tbody></table></section></main></body></html>`;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nait-AWG</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet"><style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-width:320px;color:#e6edf3;background:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),#0d0b14;background-size:48px 48px;font:14px Montserrat,system-ui,sans-serif}main{width:min(1100px,calc(100% - 32px));margin:42px auto}.panel{overflow:hidden;margin:18px 0;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:linear-gradient(145deg,rgba(28,30,39,.96),rgba(17,15,24,.98))}header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:22px;border-bottom:1px solid rgba(255,255,255,.08)}h1,h2{margin:0}p,.muted,small{color:#8b949e}small{display:block;margin-top:5px;font-size:11px}.new-peer{display:flex;gap:10px;align-items:end;padding:18px}.new-peer label{display:grid;gap:7px;flex:1;color:#aeb4bd;font-size:12px}input{height:42px;padding:0 12px;border:1px solid rgba(255,255,255,.12);border-radius:9px;background:#0d0b14;color:#e6edf3;font:inherit}.button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid #4d836f;border-radius:9px;background:#259b76;color:#f3fffb;font:600 12px Montserrat,sans-serif;text-decoration:none;cursor:pointer}.button.danger{border-color:#854656;background:#4a2430}table{width:100%;border-collapse:collapse}th,td{padding:14px 18px;text-align:left;border-top:1px solid rgba(255,255,255,.08)}th{color:#8b949e;font-size:11px}.controls{display:flex;flex-wrap:wrap;gap:7px}.controls form{margin:0}.notice{margin:18px 0;padding:12px 15px;border:1px solid #367b67;border-radius:10px;background:#173c34;color:#9ee8d3}@media(max-width:700px){main{width:min(100% - 20px,1100px);margin:18px auto}header,.new-peer{align-items:stretch;flex-direction:column}.controls{min-width:210px}table{min-width:700px}.panel{overflow:auto}}</style></head><body><main><header><div><h1>Nait-AWG</h1><p>Frankfurt · ${escapeHtml(profile.interface || 'awg0')} · ${peers.length} peer</p></div><form method="post" action="/logout"><button class="button danger" type="submit">Выйти</button></form></header>${notice ? `<div class="notice">${escapeHtml(notice)}</div>` : ''}<section class="panel"><header><div><h2>Доступы</h2><p>Nait-AWG управляет только peer, созданными этой панелью.</p></div></header><form class="new-peer" method="post" action="/panel/peers"><label>Имя нового клиента<input name="label" maxlength="80" required placeholder="например, iPhone-Nikita"></label><button class="button" type="submit">Выдать доступ</button></form><table><thead><tr><th>КЛИЕНТ</th><th>АДРЕС</th><th>СТАТУС</th><th>ДЕЙСТВИЯ</th></tr></thead><tbody>${rows}</tbody></table></section></main></body></html>`;
 }
 
 function initials(label) {
@@ -149,16 +149,16 @@ function renderPanelV2(peers, profile, options = {}) {
   const query = escapeHtml(options.query || '');
 }
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'nait-awg-solo', timestamp: new Date().toISOString() }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'nait-awg', timestamp: new Date().toISOString() }));
 app.post('/api/login', (req, res) => {
-  console.info('[nait-awg-solo] login attempt');
+  console.info('[nait-awg] login attempt');
   if (!credentialsMatch(req.body)) {
-    console.info('[nait-awg-solo] login rejected');
+    console.info('[nait-awg] login rejected');
     return res.status(401).json({ code: 'invalid_credentials', message: 'Неверные данные.' });
   }
   issueSession(res);
   res.setHeader('Connection', 'close');
-  console.info('[nait-awg-solo] login accepted');
+  console.info('[nait-awg] login accepted');
   return res.json({ status: 'ok' });
 });
 app.post('/login', (req, res) => {
@@ -166,34 +166,34 @@ app.post('/login', (req, res) => {
   issueSession(res);
   return res.redirect(303, '/panel');
 });
-app.post('/api/logout', (_req, res) => { res.setHeader('Set-Cookie', `solo_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.status(204).end(); });
-app.post('/logout', (_req, res) => { res.setHeader('Set-Cookie', `solo_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.redirect(303, '/'); });
+app.post('/api/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.status(204).end(); });
+app.post('/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.redirect(303, '/'); });
 app.get('/api/session', (req, res) => res.json({ authenticated: isAuthenticated(req) }));
-app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await solo.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
+app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await panelService.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
 app.post('/api/backup', requireAuth, async (req, res) => {
   const origin = req.get('origin');
   const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
   if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   try {
-    const backup = await solo.createBackup(req.body?.passphrase);
+    const backup = await panelService.createBackup(req.body?.passphrase);
     const stamp = backup.createdAt.replace(/[:.]/g, '-');
     res.attachment(`nait-awg-backup-${stamp}-${backup.encryption ? 'encrypted' : 'plain'}.json`);
     return res.type('application/json').send(JSON.stringify(backup, null, 2) + '\n');
   } catch (error) { return sendError(res, error); }
 });
-app.get('/api/peers', requireAuth, async (_req, res) => { try { res.json(await solo.listPeers()); } catch (error) { sendError(res, error); } });
-app.post('/api/peers', requireAuth, async (req, res) => { try { res.status(201).json(await solo.createPeer(req.body)); } catch (error) { sendError(res, error); } });
-app.get('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await solo.readPeerAccess(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
-app.get('/api/peers/:fingerprint/usage', requireAuth, async (req, res) => { try { res.json(await solo.getUsage(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
-app.post('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await solo.setPeerAccess(req.params.fingerprint, req.body?.enabled)); } catch (error) { sendError(res, error); } });
-app.get('/api/peers/:fingerprint/config', requireAuth, async (req, res) => { try { const { client, config } = await solo.getConfig(req.params.fingerprint); res.type('text/plain').attachment(`${client.receiverLabel}.conf`).send(config); } catch (error) { sendError(res, error); } });
-app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { res.type('image/svg+xml').send(await solo.getQr(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
-app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await solo.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
-app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await solo.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
-app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await solo.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });
-app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([solo.listPeers(), solo.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : ''; res.type('html').send(renderSoloPanel({ peers, profile, selectedId, notice })); } catch (error) { sendError(res, error); } });
-app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await solo.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });
-app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) => { try { await solo.deletePeer(req.params.fingerprint); res.redirect(303, '/panel'); } catch (error) { sendError(res, error); } });
+app.get('/api/peers', requireAuth, async (_req, res) => { try { res.json(await panelService.listPeers()); } catch (error) { sendError(res, error); } });
+app.post('/api/peers', requireAuth, async (req, res) => { try { res.status(201).json(await panelService.createPeer(req.body)); } catch (error) { sendError(res, error); } });
+app.get('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await panelService.readPeerAccess(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
+app.get('/api/peers/:fingerprint/usage', requireAuth, async (req, res) => { try { res.json(await panelService.getUsage(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
+app.post('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await panelService.setPeerAccess(req.params.fingerprint, req.body?.enabled)); } catch (error) { sendError(res, error); } });
+app.get('/api/peers/:fingerprint/config', requireAuth, async (req, res) => { try { const { client, config } = await panelService.getConfig(req.params.fingerprint); res.type('text/plain').attachment(`${client.receiverLabel}.conf`).send(config); } catch (error) { sendError(res, error); } });
+app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { res.type('image/svg+xml').send(await panelService.getQr(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
+app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
+app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
+app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });
+app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : ''; res.type('html').send(renderAwgPanel({ peers, profile, selectedId, notice })); } catch (error) { sendError(res, error); } });
+app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await panelService.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });
+app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.redirect(303, '/panel'); } catch (error) { sendError(res, error); } });
 app.get('/', (req, res, next) => { if (isAuthenticated(req)) return res.redirect(303, '/panel'); return next(); });
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html' }));
 app.use((_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
@@ -203,8 +203,8 @@ if (require.main === module) {
     ? https.createServer({ key: fs.readFileSync(tlsKeyPath), cert: fs.readFileSync(tlsCertPath) }, app)
     : app;
   server.listen(port, host, () => {
-    console.log(`Nait AWG Solo listening on ${tlsEnabled ? 'https' : 'http'}://${host}:${port}`);
-    solo.startUsageTracking();
+    console.log(`Nait-AWG listening on ${tlsEnabled ? 'https' : 'http'}://${host}:${port}`);
+    panelService.startUsageTracking();
   });
 }
 

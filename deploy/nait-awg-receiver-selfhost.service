@@ -1,0 +1,24 @@
+[Unit]
+Description=Nait-AWG Receiver (existing AmneziaWG)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=nait-awg
+Group=nait-awg
+SupplementaryGroups=docker
+WorkingDirectory=/opt/naitlab/nait_awg/receiver
+EnvironmentFile=/opt/naitlab/nait_awg/receiver/.env
+ExecStart=/opt/naitlab/nait_awg/runtime/bin/node /opt/naitlab/nait_awg/receiver/src/app.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/naitlab/nait_awg/receiver/tmp /opt/naitlab/nait_awg/receiver/backups /opt/naitlab/nait_awg/receiver/locks /opt/naitlab/nait_awg/receiver/state
+
+[Install]
+WantedBy=multi-user.target

@@ -136,7 +136,7 @@ function allocateAddress(subnet, interfaceAddress, peers) {
   const [networkText, prefixText] = String(subnet || '').split('/');
   const network = parseIpv4(networkText);
   const prefix = Number(prefixText);
-  if (network === null || prefix !== 24) throw createHttpError(409, 'unsupported_tunnel_subnet', 'Solo MVP currently requires an IPv4 /24 tunnel subnet');
+  if (network === null || prefix !== 24) throw createHttpError(409, 'unsupported_tunnel_subnet', 'Nait-AWG MVP currently requires an IPv4 /24 tunnel subnet');
   const used = new Set((peers || []).flatMap((peer) => peer.allowedIps || []).map((cidr) => parseIpv4(String(cidr).split('/')[0])).filter((value) => value !== null));
   used.add(parseIpv4(String(interfaceAddress || '').split('/')[0]));
   for (let host = 2; host < 255; host += 1) {
@@ -321,10 +321,10 @@ function createNoteStore(filePath) {
   };
 }
 
-function createSoloService(env = process.env, dependencies = {}) {
+function createAwgService(env = process.env, dependencies = {}) {
   const receiver = makeReceiverClient(env);
-  const dataKey = base64Key(env.SOLO_DATA_KEY, 'SOLO_DATA_KEY');
-  const dataPath = path.resolve(env.SOLO_DATA_PATH || './data/clients.db');
+  const dataKey = base64Key(env.NAIT_AWG_DATA_KEY, 'NAIT_AWG_DATA_KEY');
+  const dataPath = path.resolve(env.NAIT_AWG_DATA_PATH || './data/clients.db');
   const clientStore = createClientStore(dataPath);
   const noteStore = createNoteStore(path.join(path.dirname(dataPath), 'peer-notes.json'));
   const usageStore = createUsageStore(path.join(path.dirname(dataPath), 'traffic-history.json'));
@@ -365,7 +365,7 @@ function createSoloService(env = process.env, dependencies = {}) {
 
   function startUsageTracking() {
     if (usageTimer) return;
-    const poll = () => sampleUsage().catch((error) => console.warn('[nait-awg-solo] usage_sample_failed', error.code || 'error'));
+    const poll = () => sampleUsage().catch((error) => console.warn('[nait-awg] usage_sample_failed', error.code || 'error'));
     poll();
     usageTimer = setInterval(poll, 60000);
     usageTimer.unref?.();
@@ -403,7 +403,7 @@ function createSoloService(env = process.env, dependencies = {}) {
     const client = clientStore.findActive(fingerprint);
     const saved = clientStore.gateByFingerprint(fingerprint);
     const address = client?.address || saved?.address || (peer.allowedIps?.length === 1 ? peer.allowedIps[0] : '');
-    const deviceId = client?.clientId || saved?.deviceId || `solo-existing-${fingerprint}`;
+    const deviceId = client?.clientId || saved?.deviceId || `awg-existing-${fingerprint}`;
     if (!isHostAddress(address) || (saved && (saved.publicKey !== peer.publicKey || saved.address !== address || saved.deviceId !== deviceId))) {
       throw createHttpError(409, 'gate_address_unverified', 'Не удалось подтвердить исходный адрес клиента.');
     }
@@ -541,7 +541,7 @@ function createSoloService(env = process.env, dependencies = {}) {
       const createdAt = new Date().toISOString();
       const snapshot = { format: 'nait-awg-snapshot', version: 1, createdAt,
         awg: { configFile: 'awg0.conf', config: before },
-        panel: { users, database: database.toString('base64'), dataKey: env.SOLO_DATA_KEY,
+        panel: { users, database: database.toString('base64'), dataKey: env.NAIT_AWG_DATA_KEY,
           metadata, usageHistory, clientDefaults: { endpointHost, dns, allowedIps, keepalive } } };
       return encrypted ? encryptBackup(snapshot, passphrase, createdAt) : plainBackup(snapshot, createdAt);
       });
@@ -564,7 +564,7 @@ function createSoloService(env = process.env, dependencies = {}) {
     const reserved = clientStore.reservedAddresses().map((entry) => ({ allowedIps: [entry.address] }));
     const address = allocateAddress(profile.tunnelSubnet, profile.interfaceAddress, [...current.peers, ...reserved]);
     const material = await generateKeyMaterial(containerName);
-    const clientId = `solo-${crypto.randomUUID()}`;
+    const clientId = `awg-${crypto.randomUUID()}`;
     const config = buildConfig({ privateKey: material.privateKey, address, profile, presharedKey: material.presharedKey, endpointHost, dns, allowedIps, keepalive });
     const idempotencyKey = crypto.randomUUID();
     await receiver('/awg/peers', {
@@ -580,7 +580,7 @@ function createSoloService(env = process.env, dependencies = {}) {
 
   async function getConfig(fingerprint) {
     const client = clientStore.findActive(fingerprint);
-    if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Solo or has been removed');
+    if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Nait-AWG or has been removed');
     return { client, config: decrypt(client.encryptedConfig, dataKey) };
   }
 
@@ -595,7 +595,7 @@ function createSoloService(env = process.env, dependencies = {}) {
 
   async function deletePeerUnlocked(fingerprint) {
     const client = clientStore.findActive(fingerprint);
-    if (!client) throw createHttpError(404, 'peer_not_managed', 'Solo can delete only peers it created');
+    if (!client) throw createHttpError(404, 'peer_not_managed', 'Nait-AWG can delete only peers it created');
     await receiver(`/awg/peers/${encodeURIComponent(fingerprint)}`, {
       method: 'DELETE',
       headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID(), 'x-request-id': crypto.randomUUID() },
@@ -624,4 +624,4 @@ function createSoloService(env = process.env, dependencies = {}) {
     readPeerAccess, setPeerAccess, createBackup, getUsage, sampleUsage, startUsageTracking, receiver };
 }
 
-module.exports = { createHttpError, createSoloService, safeClientLabel };
+module.exports = { createHttpError, createAwgService, safeClientLabel };

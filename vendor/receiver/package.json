@@ -2,7 +2,7 @@
   "name": "nait-awg-receiver",
   "version": "0.2.1",
   "private": true,
-  "description": "Loopback-only AmneziaWG control adapter for Nait-AWG Solo.",
+  "description": "Loopback-only AmneziaWG control adapter for Nait-AWG.",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",

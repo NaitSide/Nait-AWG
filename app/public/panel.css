@@ -1,4 +1,4 @@
-/* NaitRelax admin access layout, trimmed to the Solo pages. */
+/* NaitRelax admin access layout, trimmed to the Nait-AWG pages. */
 *,:before,:after{box-sizing:border-box}
 :root{--bg:#0d0b14;--panel:rgba(18,17,26,.86);--panel-strong:#15131d;--panel-soft:rgba(255,255,255,.045);--teal:#1d9e75;--teal-soft:rgba(29,158,117,.13);--purple:#7b6eaa;--text:#e6edf3;--muted:#8b949e;--faint:#66707a;--line:rgba(255,255,255,.08);--line-strong:rgba(255,255,255,.14);--radius:8px;--shadow:0 24px 80px rgba(0,0,0,.32)}
 body{margin:0;min-width:320px;min-height:100vh;color:var(--text);font-family:Montserrat,-apple-system,BlinkMacSystemFont,sans-serif;background:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px),radial-gradient(ellipse 80% 60% at 50% 100%,#2d1b4e 0%,transparent 70%),var(--bg);background-size:60px 60px,60px 60px,100% 100%,auto}
