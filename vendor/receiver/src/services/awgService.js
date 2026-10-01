@@ -27,7 +27,6 @@ const AWG_BASE_CLIENT_INTERFACE_PARAMETER_NAMES = Object.freeze([
 const AWG_3_1_REQUIRED_CLIENT_INTERFACE_PARAMETER_NAMES = Object.freeze([
   ...AWG_BASE_CLIENT_INTERFACE_PARAMETER_NAMES,
   'HeaderProtectionKey',
-  'ContentPaddingAddition',
   'RekeyAfterTime',
   'RekeyTimeout',
   'RejectAfterTime',
@@ -37,7 +36,7 @@ const AWG_3_1_REQUIRED_CLIENT_INTERFACE_PARAMETER_NAMES = Object.freeze([
   'DisableCookies'
 ]);
 const AWG_3_1_OPTIONAL_CLIENT_INTERFACE_PARAMETER_NAMES = Object.freeze([
-  'I1', 'I2', 'I3', 'I4', 'I5'
+  'ContentPaddingAddition', 'I1', 'I2', 'I3', 'I4', 'I5'
 ]);
 const AWG_CLIENT_INTERFACE_PARAMETER_NAMES = Object.freeze([
   ...AWG_3_1_REQUIRED_CLIENT_INTERFACE_PARAMETER_NAMES,
@@ -409,6 +408,20 @@ function parseAwgClientInterfaceParameters(configText) {
   for (const name of AWG_3_1_OPTIONAL_CLIENT_INTERFACE_PARAMETER_NAMES) {
     if (!Object.prototype.hasOwnProperty.call(params, name)) continue;
     const text = String(params[name] || '').trim();
+    if (name === 'ContentPaddingAddition') {
+      const match = text.match(/^(\d+)(?:-(\d+))?$/);
+      const start = match ? Number(match[1]) : NaN;
+      const end = match ? Number(match[2] === undefined ? match[1] : match[2]) : NaN;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+        || start < 0 || end > UINT16_MAX || start > end) {
+        throw createProfileError(
+          'awg_client_parameters_unavailable',
+          'awg_client_parameters_unavailable: invalid_or_missing_awg_client_parameter:ContentPaddingAddition'
+        );
+      }
+      normalized[name] = text;
+      continue;
+    }
     if (!text || text.length > MAX_SPECIAL_JUNK_LENGTH || /[\r\n\0]/.test(text)) {
       throw createProfileError('awg_client_parameters_unavailable');
     }
@@ -577,7 +590,9 @@ async function getAwgProfile() {
       ...baseProfile,
       status: 'error',
       error: error.code || 'awg_profile_unavailable',
-      ...(error.code === 'awg_client_parameters_unavailable' ? { errorDetail: error.message } : {}),
+      ...(error.code === 'awg_client_parameters_unavailable' ? {
+        errorDetail: error.message.replace(/^awg_client_parameters_unavailable:\s*/, '')
+      } : {}),
       timestamp: nowIso()
     };
   }

@@ -258,6 +258,18 @@ test('parseAwgClientInterfaceParameters extracts complete AWG 3.1 params and com
   assert.equal(getAwgProtocolVersion(params), '3.1');
 });
 
+test('parseAwgClientInterfaceParameters allows omitted optional ContentPaddingAddition', () => {
+  const config = syntheticAwgConfig().replace(/^ContentPaddingAddition = .*\r?\n/m, '');
+  const params = parseAwgClientInterfaceParameters(config);
+
+  assert.equal(Object.hasOwn(params, 'ContentPaddingAddition'), false);
+  assert.throws(
+    () => parseAwgClientInterfaceParameters(syntheticAwgConfig({ ContentPaddingAddition: 'invalid' })),
+    (error) => error.code === 'awg_client_parameters_unavailable'
+      && /invalid_or_missing_awg_client_parameter:ContentPaddingAddition/.test(error.message)
+  );
+});
+
 test('parseAwgClientInterfaceParameters rejects partial or malformed AWG 3.1 params', () => {
   assert.throws(
     () => parseAwgClientInterfaceParameters(syntheticAwgConfig().replace(/^RekeyTimeout.*$/m, '')),
