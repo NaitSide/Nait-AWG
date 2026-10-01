@@ -25,7 +25,7 @@ trap cleanup EXIT
 for command_name in docker curl openssl tar xz sha256sum systemctl ss getent useradd groupadd usermod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Missing command: $command_name"
 done
-[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" ]] || fail 'Run from a complete Solo source checkout.'
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" ]] || fail 'Run from a complete Solo source checkout.'
 
 if [[ "${1:-}" == install ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "$INSTALL_DIR already exists; refusing to overwrite an installation."
@@ -37,6 +37,7 @@ elif [[ "${1:-}" != audit ]]; then
 fi
 
 # The pinned Node archive may be supplied offline; otherwise fetch the official release.
+note 'Готовим проверку сервера...'
 stage="$(mktemp -d /tmp/nait-awg-solo.XXXXXX)"
 if [[ -n "${SOLO_NODE_ARCHIVE:-}" ]]; then
   [[ -f "$SOLO_NODE_ARCHIVE" ]] || fail 'SOLO_NODE_ARCHIVE is not a readable file.'
@@ -51,14 +52,21 @@ node="$stage/node-v24.20.0-linux-x64/bin/node"
 npm="$stage/node-v24.20.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js"
 [[ -x "$node" && -f "$npm" ]] || fail 'Node archive is incomplete.'
 
+note 'Ищем контейнер AmneziaWG и проверяем его настройки...'
 IFS=$'\t' read -r awg_container awg_subnet awg_started_at < <("$node" "$SOURCE_DIR/scripts/selfhost-preflight.js" --machine)
 [[ "$awg_container" =~ ^amnezia-awg2?$ && "$awg_subnet" =~ ^[0-9./]+$ && "$awg_started_at" =~ ^[0-9TZ:.-]+$ ]] || fail 'Invalid preflight result.'
-note "Compatible AWG 3.1 found: $awg_container, $awg_subnet. Existing VPN was not changed."
+note "AmneziaWG 3.1 найден: $awg_container, $awg_subnet. Работающий VPN не трогаем."
 if [[ "${1:-}" == audit ]]; then exit 0; fi
 
 public_endpoint="${SOLO_PUBLIC_ENDPOINT:-}"
 if [[ -z "$public_endpoint" && -r /dev/tty ]]; then
-  read -r -p 'Public IPv4 address of this VPS: ' public_endpoint </dev/tty
+  detected_endpoint="$("$node" "$SOURCE_DIR/scripts/detect-public-ipv4.js")"
+  if [[ -n "$detected_endpoint" ]]; then
+    read -r -p "Публичный IPv4 сервера [$detected_endpoint] (Enter — принять): " public_endpoint </dev/tty
+    public_endpoint="${public_endpoint:-$detected_endpoint}"
+  else
+    read -r -p 'Введите публичный IPv4 сервера: ' public_endpoint </dev/tty
+  fi
 fi
 [[ "$public_endpoint" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || fail 'Set SOLO_PUBLIC_ENDPOINT to a public IPv4 address.'
 IFS=. read -r octet1 octet2 octet3 octet4 <<< "$public_endpoint"
@@ -67,7 +75,7 @@ for octet in "$octet1" "$octet2" "$octet3" "$octet4"; do
 done
 admin_password="${SOLO_ADMIN_PASSWORD:-}"
 if [[ -z "$admin_password" && -r /dev/tty ]]; then
-  read -r -s -p 'Solo admin password (12+ characters): ' admin_password </dev/tty
+  read -r -s -p 'Пароль администратора панели (от 12 символов): ' admin_password </dev/tty
   printf '\n' >&2
 fi
 [[ "${#admin_password}" -ge 12 && "$admin_password" =~ ^[a-zA-Z0-9@#%^*_.!+-]+$ ]] || fail 'Admin password must be 12+ characters and use letters, digits or @#%^*_.!+-.'
@@ -76,7 +84,7 @@ fi
 "$node" "$SOURCE_DIR/scripts/selfhost-preflight.js" >/dev/null
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'AWG container restarted during preflight; retry later.'
 
-note 'Installing panel and loopback-only Receiver. AWG container will not be restarted.'
+note 'Устанавливаем панель. Контейнер VPN перезапускать не будем...'
 install -d -m 0755 /opt/naitlab
 install -d -m 0750 "$stage/receiver" "$stage/data" "$stage/tls" "$stage/runtime"
 cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$stage/"
@@ -156,5 +164,5 @@ curl --fail --silent --show-error --max-time 10 http://127.0.0.1:42842/health >/
 systemctl enable --now "$PANEL_UNIT"
 curl --insecure --fail --silent --show-error --max-time 10 https://127.0.0.1/health >/dev/null
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'AWG container start time changed during installation; investigate immediately.'
-note "Installed: https://$public_endpoint/ (self-signed certificate)."
-note 'No AWG container restart was performed. Open TCP 443 in your VPS firewall/security group if needed.'
+note "Готово: https://$public_endpoint/ (самоподписанный сертификат)."
+note 'VPN не перезапускали. Если панель недоступна, проверьте TCP-порт 443 в фаерволе.'
