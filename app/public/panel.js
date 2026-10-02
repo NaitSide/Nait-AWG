@@ -640,6 +640,11 @@ function resetRestoreInspection() {
   restoreInspected = false;
   document.getElementById('restoreSummary').hidden = true;
   document.getElementById('restoreConfirm').checked = false;
+  document.getElementById('restoreObfuscation').checked = false;
+  document.getElementById('restoreProgress').hidden = true;
+  document.getElementById('restoreForm').hidden = false;
+  document.getElementById('restoreSubtitle').textContent = 'Сначала проверим файл и целевой сервер.';
+  document.getElementById('restoreModalTitle').textContent = 'Перенести клиентов из копии';
   document.getElementById('restoreError').hidden = true;
   document.getElementById('restoreSubmit').textContent = 'Проверить копию';
 }
@@ -682,6 +687,7 @@ document.getElementById('restoreForm').addEventListener('submit', async event =>
       document.getElementById('restorePeers').textContent = String(summary.peersCount);
       document.getElementById('restoreEndpoint').textContent = summary.sourceEndpoint || '—';
       document.getElementById('restoreTargetEndpoint').textContent = summary.targetEndpoint || '—';
+      document.getElementById('restoreObfuscation').disabled = !summary.obfuscationAvailable;
       document.getElementById('restoreSummary').hidden = false;
       fileInput.disabled = true;
       passwordInput.disabled = true;
@@ -693,15 +699,24 @@ document.getElementById('restoreForm').addEventListener('submit', async event =>
     if (!confirmInput.checked) {
       throw new Error('Подтвердите замену текущих данных.');
     }
-    submit.textContent = 'Восстанавливаем…';
+    submit.textContent = 'Переносим…';
+    document.getElementById('restoreForm').hidden = true;
+    document.getElementById('restoreProgress').hidden = false;
+    document.getElementById('restoreModalTitle').textContent = 'Переносим клиентов';
+    document.getElementById('restoreSubtitle').textContent = 'Создаём новые ключи и конфиги под этот сервер.';
     const response = await fetch('/api/restore', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-      body: JSON.stringify({ backup: restoreBackupObject, passphrase: passwordInput.value || null, confirmed: true })
+      body: JSON.stringify({ backup: restoreBackupObject, passphrase: passwordInput.value || null,
+        confirmed: true, restoreObfuscation: document.getElementById('restoreObfuscation').checked })
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message || 'Не удалось восстановить резервную копию.');
     window.location.assign('/panel?restored=1');
   } catch (failure) {
+    document.getElementById('restoreProgress').hidden = true;
+    document.getElementById('restoreForm').hidden = false;
+    document.getElementById('restoreModalTitle').textContent = 'Перенести клиентов из копии';
+    document.getElementById('restoreSubtitle').textContent = 'Исправьте ошибку и повторите попытку.';
     error.textContent = failure.message || 'Не удалось восстановить резервную копию.';
     error.hidden = false;
   } finally {

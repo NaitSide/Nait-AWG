@@ -283,7 +283,11 @@ app.post('/api/restore', requireAuth, restoreJsonParser, async (req, res) => {
   const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
   if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   if (req.body?.confirmed !== true) return res.status(400).json({ code: 'restore_not_confirmed', message: 'Подтвердите замену текущих данных.' });
-  try { return res.json(await panelService.restoreBackup(req.body?.backup, req.body?.passphrase)); }
+  if (req.body?.restoreObfuscation !== undefined && typeof req.body.restoreObfuscation !== 'boolean') {
+    return res.status(400).json({ code: 'invalid_restore_option', message: 'Некорректный выбор параметров обфускации.' });
+  }
+  try { return res.json(await panelService.restoreBackup(req.body?.backup, req.body?.passphrase,
+    { restoreObfuscation: req.body?.restoreObfuscation === true })); }
   catch (error) { return sendError(res, error); }
 });
 app.get('/api/peers', requireAuth, async (_req, res) => { try { res.json(await panelService.listPeers()); } catch (error) { sendError(res, error); } });

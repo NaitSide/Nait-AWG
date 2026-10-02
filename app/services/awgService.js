@@ -61,9 +61,10 @@ function makeReceiverClient(env = process.env) {
   const apiKey = String(env.RECEIVER_API_KEY || '').trim();
 
   return async function receiverRequest(route, options = {}) {
-    const headers = { accept: 'application/json', ...(options.headers || {}) };
+    const { timeoutMs = 30000, ...fetchOptions } = options;
+    const headers = { accept: 'application/json', ...(fetchOptions.headers || {}) };
     if (apiKey) headers.authorization = `Bearer ${apiKey}`;
-    const response = await fetch(`${baseUrl}${route}`, { ...options, headers, signal: AbortSignal.timeout(30000) });
+    const response = await fetch(`${baseUrl}${route}`, { ...fetchOptions, headers, signal: AbortSignal.timeout(timeoutMs) });
     const text = await response.text();
     let payload = null;
     try { payload = text ? JSON.parse(text) : null; } catch {}
@@ -379,7 +380,7 @@ function backupBuffer(value) {
   return result;
 }
 
-function prepareRestoreDatabase(encoded, sourceDataKey, targetDataKey, targetEndpoint = '') {
+function prepareRestoreDatabase(encoded) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-restore-'));
   const databasePath = path.join(directory, 'clients.db');
   let database;
@@ -415,21 +416,8 @@ function prepareRestoreDatabase(encoded, sourceDataKey, targetDataKey, targetEnd
         throw createHttpError(400, 'invalid_backup_database', 'Записи клиентов в резервной копии повреждены.');
       }
       ids.add(client.clientId); fingerprints.add(client.publicKeyFingerprint);
-      if (client.encryptedConfig !== null) {
-        try {
-          const configText = decrypt(client.encryptedConfig, sourceDataKey);
-          if (configText.length > 1024 * 1024 || !/^\[Interface\]/m.test(configText) || !/^PrivateKey\s*=/m.test(configText)) throw new Error('invalid client config');
-          const restoredConfig = targetEndpoint
-            ? configText.replace(/^Endpoint\s*=\s*.+$/mi, `Endpoint = ${targetEndpoint}`)
-            : configText;
-          if (targetEndpoint && restoredConfig === configText && !new RegExp(`^Endpoint\\s*=\\s*${targetEndpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'mi').test(configText)) {
-            throw new Error('client endpoint is missing');
-          }
-          client.encryptedConfig = encrypt(restoredConfig, targetDataKey);
-        } catch {
-          throw createHttpError(400, 'invalid_backup_client_config', 'Один из клиентских конфигов в копии повреждён.');
-        }
-      }
+      // Old client secrets belong to the old server. The migration creates fresh material.
+      client.encryptedConfig = null;
     }
     for (const gate of gates) {
       if (!/^[a-f0-9]{12}$/.test(gate.publicKeyFingerprint || '') || !KEY_PATTERN.test(gate.publicKey || '')
@@ -482,6 +470,71 @@ function buildRestoreClientsTable(config, database, source) {
   });
 }
 
+function listenPortFromConfig(config, target = false) {
+  const matches = [...String(config || '').matchAll(/^\s*ListenPort\s*=\s*(\d+)\s*$/gmi)];
+  const port = matches.length === 1 ? Number(matches[0][1]) : NaN;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw target
+      ? createHttpError(409, 'invalid_target_awg_config', 'В конфиге целевого AWG отсутствует корректный порт.')
+      : createHttpError(400, 'invalid_backup_awg_config', 'В резервной копии отсутствует корректный порт AWG.');
+  }
+  return port;
+}
+
+function interfaceConfig(config) {
+  const text = String(config || '');
+  const peer = /^\s*\[Peer\]\s*$/mi.exec(text);
+  const part = (peer ? text.slice(0, peer.index) : text).trimEnd();
+  if (!/^\s*\[Interface\]\s*$/mi.test(part)) {
+    throw createHttpError(400, 'invalid_restore_interface', 'Серверный конфиг AWG повреждён.');
+  }
+  return `${part}\n`;
+}
+
+const OBFUSCATION_NAMES = new Set([...CLIENT_PARAMETER_ORDER, 'ClientJc', 'ClientJmin', 'ClientJmax']);
+function obfuscationLine(line) {
+  const match = String(line).match(/^\s*(?:[#;]\s*)?([A-Za-z][A-Za-z0-9]*)\s*=/);
+  return Boolean(match && OBFUSCATION_NAMES.has(match[1]));
+}
+
+function targetInterfaceConfig(target, source, restoreObfuscation) {
+  const targetLines = interfaceConfig(target).trimEnd().split(/\r?\n/);
+  if (!restoreObfuscation) return `${targetLines.join('\n')}\n`;
+  const sourceLines = interfaceConfig(source).split(/\r?\n/).filter(obfuscationLine);
+  if (!sourceLines.length) throw createHttpError(400, 'invalid_backup_obfuscation', 'В копии нет параметров обфускации.');
+  return `${[...targetLines.filter((line) => !obfuscationLine(line)), ...sourceLines].join('\n')}\n`;
+}
+
+function sourceMigrationPeers(config, database, clientsTable, createdAt) {
+  const managed = new Map(database.clients.filter((client) => client.status === 'active')
+    .map((client) => [client.publicKeyFingerprint, client]));
+  const blocks = String(config).split(/^\s*\[Peer\]\s*$/gmi).slice(1);
+  const seen = new Set();
+  return blocks.map((block, index) => {
+    const publicKey = /^\s*PublicKey\s*=\s*(\S+)\s*$/mi.exec(block)?.[1] || '';
+    if (!KEY_PATTERN.test(publicKey) || seen.has(publicKey)) {
+      throw createHttpError(400, 'invalid_backup_awg_config', 'В копии есть некорректные или повторяющиеся peer.');
+    }
+    seen.add(publicKey);
+    const fingerprint = createFingerprint(publicKey);
+    const old = managed.get(fingerprint);
+    const table = clientsTable[index];
+    const allowedIps = (/^\s*AllowedIPs\s*=\s*(.*?)\s*$/mi.exec(block)?.[1] || '').trim();
+    return { oldFingerprint: fingerprint, label: old?.label || table.userData.clientName,
+      createdAt: old?.createdAt || table.userData.creationDate || createdAt,
+      enabled: Boolean(allowedIps) };
+  });
+}
+
+function remapTraffic(usageHistory, mappings) {
+  const next = { ...usageHistory, peers: {} };
+  for (const { oldFingerprint, fingerprint, publicKey } of mappings) {
+    const old = usageHistory.peers[oldFingerprint];
+    if (old) next.peers[fingerprint] = { ...old, publicKey, lastRx: 0, lastTx: 0 };
+  }
+  return next;
+}
+
 function createAwgService(env = process.env, dependencies = {}) {
   const receiver = makeReceiverClient(env);
   const dataKey = base64Key(env.NAIT_AWG_DATA_KEY, 'NAIT_AWG_DATA_KEY');
@@ -508,6 +561,18 @@ function createAwgService(env = process.env, dependencies = {}) {
       return null;
     }
   });
+  const readPublishedVpnPort = dependencies.readPublishedVpnPort || (async (internalPort) => {
+    const { stdout } = await execFileAsync('docker', ['inspect', '--format', '{{json .HostConfig.PortBindings}}', containerName],
+      { timeout: 30000, maxBuffer: 1024 * 1024, encoding: 'utf8', windowsHide: true });
+    let bindings;
+    try { bindings = JSON.parse(stdout); } catch { bindings = null; }
+    const ports = bindings?.[`${internalPort}/udp`];
+    const published = Array.isArray(ports) ? ports
+      .filter((item) => !/^(127\.|::1$)/.test(String(item?.HostIp || '')))
+      .map((item) => Number(item?.HostPort)) : [];
+    return published.find((port) => Number.isInteger(port) && port > 0 && port <= 65535) || null;
+  });
+  const newKeyMaterial = dependencies.generateKeyMaterial || (() => generateKeyMaterial(containerName));
   const gateReadCache = new Map();
   let gateQueue = Promise.resolve();
   let backupInProgress = false;
@@ -743,17 +808,8 @@ function createAwgService(env = process.env, dependencies = {}) {
         || !/^\[Interface\]/m.test(config) || !/^PrivateKey\s*=/m.test(config)) {
       throw createHttpError(400, 'invalid_backup_awg_config', 'Конфиг AWG в резервной копии повреждён.');
     }
-    const listenPort = Number(/^ListenPort\s*=\s*(\d+)\s*$/mi.exec(config)?.[1]);
-    if (!Number.isInteger(listenPort) || listenPort < 1 || listenPort > 65535) {
-      throw createHttpError(400, 'invalid_backup_awg_config', 'В конфиге AWG отсутствует корректный порт.');
-    }
-    const targetEndpoint = endpointHost ? `${endpointHost}:${listenPort}` : '';
-    let sourceDataKey;
-    try { sourceDataKey = base64Key(snapshot.panel?.dataKey, 'backup data key'); }
-    catch { throw createHttpError(400, 'invalid_backup_data_key', 'Ключ данных панели в резервной копии повреждён.'); }
-    let database;
-    try { database = prepareRestoreDatabase(snapshot.panel?.database, sourceDataKey, dataKey, targetEndpoint); }
-    finally { sourceDataKey.fill(0); }
+    const listenPort = listenPortFromConfig(config);
+    const database = prepareRestoreDatabase(snapshot.panel?.database);
     const configPeers = restoredPeerMap(config);
     for (const client of database.clients.filter((item) => item.status === 'active')) {
       const allowedIps = configPeers.get(client.publicKeyFingerprint);
@@ -762,6 +818,8 @@ function createAwgService(env = process.env, dependencies = {}) {
       }
     }
     const clientsTable = buildRestoreClientsTable(config, database, snapshot.awg?.clientsTable);
+    const sourcePeers = sourceMigrationPeers(config, database, clientsTable, snapshot.createdAt);
+    if (sourcePeers.length > 253) throw createHttpError(400, 'too_many_backup_peers', 'Для переноса доступно не более 253 клиентов.');
     const metadata = snapshot.panel?.metadata;
     const metadataTelegrams = metadata?.telegrams ?? {};
     if (metadata?.version !== 1 || !metadata.notes || typeof metadata.notes !== 'object' || Array.isArray(metadata.notes)
@@ -778,45 +836,112 @@ function createAwgService(env = process.env, dependencies = {}) {
     if (!validUsageState(usageHistory)) {
       throw createHttpError(400, 'invalid_backup_usage', 'История трафика в резервной копии повреждена.');
     }
-    return { snapshot, config, clientsTable, database, metadata: normalizedMetadata, usageHistory,
+    return { snapshot, config, clientsTable, sourcePeers, database, metadata: normalizedMetadata, usageHistory,
       summary: { createdAt: snapshot.createdAt, encrypted: Boolean(envelope?.encryption),
-        clientsCount: database.clients.filter((client) => client.status === 'active').length,
+        clientsCount: sourcePeers.length,
         deletedClientsCount: database.clients.filter((client) => client.status === 'deleted').length,
-        peersCount: (config.match(/^\s*\[Peer\]\s*$/gmi) || []).length,
+        peersCount: sourcePeers.length,
         sourceEndpoint: snapshot.panel?.clientDefaults?.endpointHost
           ? `${snapshot.panel.clientDefaults.endpointHost}:${listenPort}`
-          : '—',
-        targetEndpoint: targetEndpoint || 'не изменяется' } };
+          : '—' } };
+  }
+
+  async function readTargetContext() {
+    if (!endpointHost) throw createHttpError(409, 'endpoint_not_configured', 'На целевом сервере не задан PUBLIC_ENDPOINT_HOST.');
+    const [config, profile] = await Promise.all([readAwgConfig(), receiver('/awg/profile')]);
+    if (profile?.status !== 'ok' || !KEY_PATTERN.test(profile.serverPublicKey || '')
+        || !profile.interfaceAddress || !profile.tunnelSubnet) {
+      throw createHttpError(409, 'target_awg_unavailable', 'Целевой сервер AWG не готов. Сначала проверьте тестового клиента.');
+    }
+    if (listenPortFromConfig(config, true) !== profile.listenPort) {
+      throw createHttpError(409, 'target_awg_port_mismatch', 'Порт AWG в конфиге и запущенном интерфейсе различается. Сначала восстановите рабочее состояние сервера.');
+    }
+    const publishedPort = await readPublishedVpnPort(profile.listenPort);
+    if (!Number.isInteger(publishedPort) || publishedPort < 1 || publishedPort > 65535) {
+      throw createHttpError(409, 'target_awg_port_unpublished', 'VPN-порт AWG не опубликован Docker. Сначала восстановите рабочее состояние сервера.');
+    }
+    return { config, profile, publishedPort };
   }
 
   async function inspectBackup(envelope, passphrase) {
-    return (await prepareRestore(envelope, passphrase)).summary;
+    const prepared = await prepareRestore(envelope, passphrase);
+    const target = await readTargetContext();
+    return { ...prepared.summary, targetEndpoint: `${endpointHost}:${target.publishedPort}`,
+      obfuscationAvailable: interfaceConfig(prepared.config).split(/\r?\n/).some(obfuscationLine) };
   }
 
-  async function restoreBackup(envelope, passphrase) {
+  async function restoreBackup(envelope, passphrase, options = {}) {
     if (restoreInProgress || backupInProgress) throw createHttpError(429, 'restore_busy', 'Восстановление или резервное копирование уже выполняется.');
     restoreInProgress = true;
     try {
       return await withGateLock(async () => {
         const prepared = await prepareRestore(envelope, passphrase);
+        const target = await readTargetContext();
+        const restoreObfuscation = options.restoreObfuscation === true;
         const previous = {
-          config: await readAwgConfig(),
+          config: target.config,
           database: clientStore.snapshotState(),
           metadata: noteStore.snapshot(),
           usageHistory: usageStore.snapshot(),
           rawClientsTable: await readAwgClientsTable()
         };
         previous.clientsTable = buildRestoreClientsTable(previous.config, previous.database, previous.rawClientsTable);
+        const interfaceText = targetInterfaceConfig(target.config, prepared.config, restoreObfuscation);
+        const staged = [];
+        const reserved = [];
+        const usedKeys = new Set();
+        for (const sourcePeer of prepared.sourcePeers) {
+          const material = await newKeyMaterial();
+          if (![material?.privateKey, material?.publicKey, material?.presharedKey].every((key) => KEY_PATTERN.test(key || ''))
+              || usedKeys.has(material.publicKey)) {
+            throw createHttpError(500, 'invalid_generated_key', 'Генератор ключей вернул некорректный или повторный ключ.');
+          }
+          usedKeys.add(material.publicKey);
+          const address = allocateAddress(target.profile.tunnelSubnet, target.profile.interfaceAddress, reserved);
+          reserved.push({ allowedIps: [address] });
+          let receiverLabel;
+          try { receiverLabel = safeClientLabel(sourcePeer.label); }
+          catch { receiverLabel = `Client-${staged.length + 1}`; }
+          staged.push({ ...sourcePeer, ...material, address, clientId: `awg-${crypto.randomUUID()}`,
+            fingerprint: createFingerprint(material.publicKey), receiverLabel });
+        }
+        const newConfig = `${interfaceText.trimEnd()}\n\n${staged.map((peer) => [
+          '[Peer]', `PublicKey = ${peer.publicKey}`, `PresharedKey = ${peer.presharedKey}`,
+          ...(peer.enabled ? [`AllowedIPs = ${peer.address}`] : []), ''
+        ].join('\n')).join('\n')}`;
+        const newClientsTable = staged.map((peer) => ({ clientId: peer.publicKey,
+          userData: { clientName: peer.label, creationDate: peer.createdAt } }));
         const restoreConfig = async (config, clientsTable) => receiver('/awg/restore', {
-          method: 'POST',
+          method: 'POST', timeoutMs: 180000,
           headers: { 'content-type': 'application/json', 'x-request-id': crypto.randomUUID() },
           body: JSON.stringify({ config, clientsTable })
         });
-        await restoreConfig(prepared.config, prepared.clientsTable);
+        await restoreConfig(newConfig, newClientsTable);
         try {
-          clientStore.replace(prepared.database);
-          noteStore.replace(prepared.metadata);
-          usageStore.replace(prepared.usageHistory);
+          const profile = await receiver('/awg/profile');
+          if (profile?.status !== 'ok' || profile.serverPublicKey !== target.profile.serverPublicKey
+              || profile.listenPort !== target.profile.listenPort || profile.interfaceAddress !== target.profile.interfaceAddress) {
+            throw createHttpError(409, 'restore_profile_mismatch', 'После переноса профиль AWG изменился неожиданным образом. Выполняется откат.');
+          }
+          const clientProfile = { ...profile, listenPort: target.publishedPort };
+          const state = { clients: [], gates: [] };
+          const metadata = { version: 1, notes: {}, telegrams: {} };
+          for (const peer of staged) {
+            const clientConfig = buildConfig({ privateKey: peer.privateKey, address: peer.address, profile: clientProfile,
+              presharedKey: peer.presharedKey, endpointHost, dns, allowedIps, keepalive });
+            state.clients.push({ clientId: peer.clientId, label: peer.label, receiverLabel: peer.receiverLabel,
+              publicKeyFingerprint: peer.fingerprint, address: peer.address, encryptedConfig: encrypt(clientConfig, dataKey),
+              status: 'active', createdAt: peer.createdAt, deletedAt: null });
+            state.gates.push({ publicKeyFingerprint: peer.fingerprint, publicKey: peer.publicKey,
+              deviceId: peer.clientId, address: peer.address, createdAt: peer.createdAt });
+            if (prepared.metadata.notes[peer.oldFingerprint]) metadata.notes[peer.fingerprint] = prepared.metadata.notes[peer.oldFingerprint];
+            if (prepared.metadata.telegrams[peer.oldFingerprint]) metadata.telegrams[peer.fingerprint] = prepared.metadata.telegrams[peer.oldFingerprint];
+          }
+          clientStore.replace(state);
+          noteStore.replace(metadata);
+          usageStore.replace(remapTraffic(prepared.usageHistory, staged.map((peer) => ({
+            oldFingerprint: peer.oldFingerprint, fingerprint: peer.fingerprint, publicKey: peer.publicKey
+          }))));
           gateReadCache.clear();
         } catch (error) {
           let rollbackFailed = false;
@@ -829,7 +954,8 @@ function createAwgService(env = process.env, dependencies = {}) {
           }
           throw createHttpError(500, 'restore_panel_failed', 'Данные панели не восстановлены. Предыдущее состояние возвращено.');
         }
-        return { status: 'ok', restoredAt: new Date().toISOString(), ...prepared.summary };
+        return { status: 'ok', restoredAt: new Date().toISOString(), ...prepared.summary,
+          targetEndpoint: `${endpointHost}:${target.publishedPort}`, restoredObfuscation: restoreObfuscation };
       });
     } finally {
       restoreInProgress = false;

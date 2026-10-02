@@ -102,18 +102,24 @@ test('service rejects an AWG config that changes during snapshot', async () => {
   assert.equal(reads, 2);
 });
 
-test('service inspects and restores AWG, panel data, metadata and client configs', async () => {
+test('migration replaces peers with fresh keys while retaining target port and metadata', async () => {
   const sourceDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-restore-source-'));
   const targetDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-restore-target-'));
   const sourceDataKey = crypto.randomBytes(32).toString('base64');
   const targetDataKey = crypto.randomBytes(32).toString('base64');
   const peerPublicKey = /^PublicKey\s*=\s*(.+)$/m.exec(config)[1];
+  const amneziaPublicKey = crypto.randomBytes(32).toString('base64');
+  const sourceConfig = `${config}\n[Peer]\nPublicKey = ${amneziaPublicKey}\nAllowedIPs = 10.8.1.3/32\n`;
   const fingerprint = crypto.createHash('sha256').update(peerPublicKey).digest('hex').slice(0, 12);
   const clientConfig = `[Interface]\nPrivateKey = ${crypto.randomBytes(32).toString('base64')}\nAddress = 10.8.1.2/32\n\n[Peer]\nPublicKey = ${crypto.randomBytes(32).toString('base64')}\nEndpoint = old.example.test:55424\n`;
   const sourceEnv = { NAIT_AWG_DATA_KEY: sourceDataKey, NAIT_AWG_DATA_PATH: path.join(sourceDirectory, 'clients.db') };
   fs.writeFileSync(path.join(sourceDirectory, 'peer-notes.json'), JSON.stringify({ version: 1,
     notes: { [fingerprint]: 'Восстановленная заметка' }, telegrams: { [fingerprint]: '@restored' } }));
-  const source = createAwgService(sourceEnv, { readAwgConfig: async () => config,
+  const source = createAwgService(sourceEnv, { readAwgConfig: async () => sourceConfig,
+    readAwgClientsTable: async () => [
+      { clientId: peerPublicKey, userData: { clientName: 'Restored phone' } },
+      { clientId: amneziaPublicKey, userData: { clientName: 'Amnezia import', creationDate: '2026-09-26T00:00:00.000Z' } }
+    ],
     readUsagePeers: async () => ({ status: 'ok', peers: [{ publicKey: peerPublicKey, transferRx: 10, transferTx: 20 }] }) });
   const sourceDb = new DatabaseSync(sourceEnv.NAIT_AWG_DATA_PATH);
   sourceDb.prepare(`INSERT INTO clients (client_id, label, receiver_label, public_key_fingerprint,
@@ -123,12 +129,22 @@ test('service inspects and restores AWG, panel data, metadata and client configs
   sourceDb.close();
   const backup = await source.createBackup();
 
-  let activeConfig = config.replace('ListenPort = 55424', 'ListenPort = 55555');
+  const serverPublicKey = crypto.randomBytes(32).toString('base64');
+  const targetPrivateKey = crypto.randomBytes(32).toString('base64');
+  const targetOriginal = config.replace(/^PrivateKey = .*$/m, `PrivateKey = ${targetPrivateKey}`)
+    .replace('Address = 10.8.1.1/24', 'Address = 10.9.0.1/24')
+    .replace('ListenPort = 55424', 'ListenPort = 47282').replace('Jc = 4', 'Jc = 9');
+  let activeConfig = targetOriginal;
+  let activeTable = [];
+  const generatedMaterials = [];
+  let failProfileAfterRestore = false;
+  let failNextProfile = false;
   const receiver = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     if (req.url === '/awg/restore' && req.method === 'POST') {
-      activeConfig = JSON.parse(body).config;
+      ({ config: activeConfig, clientsTable: activeTable } = JSON.parse(body));
+      if (failProfileAfterRestore) { failNextProfile = true; failProfileAfterRestore = false; }
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify({ status: 'ok' }));
       return;
@@ -138,6 +154,15 @@ test('service inspects and restores AWG, panel data, metadata and client configs
       res.end(JSON.stringify({ status: 'ok', peers: [{ publicKey: peerPublicKey, allowedIps: ['10.8.1.2/32'], transferRx: 10, transferTx: 20 }] }));
       return;
     }
+    if (req.url === '/awg/profile') {
+      res.setHeader('content-type', 'application/json');
+      const reportedPublicKey = failNextProfile ? crypto.randomBytes(32).toString('base64') : serverPublicKey;
+      failNextProfile = false;
+      res.end(JSON.stringify({ status: 'ok', serverPublicKey: reportedPublicKey, listenPort: Number(/^ListenPort = (\d+)$/m.exec(activeConfig)[1]),
+        interfaceAddress: '10.9.0.1/24', tunnelSubnet: '10.9.0.0/24',
+        clientInterfaceParameters: { Jc: Number(/^Jc = (\d+)$/m.exec(activeConfig)[1]) } }));
+      return;
+    }
     res.statusCode = 404; res.end();
   });
   await new Promise((resolve) => receiver.listen(0, '127.0.0.1', resolve));
@@ -145,19 +170,56 @@ test('service inspects and restores AWG, panel data, metadata and client configs
     const targetEnv = { NAIT_AWG_DATA_KEY: targetDataKey, NAIT_AWG_DATA_PATH: path.join(targetDirectory, 'clients.db'),
       PUBLIC_ENDPOINT_HOST: 'new.example.test',
       RECEIVER_URL: `http://127.0.0.1:${receiver.address().port}` };
-    const target = createAwgService(targetEnv, { readAwgConfig: async () => activeConfig });
+    const target = createAwgService(targetEnv, { readAwgConfig: async () => activeConfig,
+      readAwgClientsTable: async () => activeTable,
+      readPublishedVpnPort: async (internalPort) => internalPort === 47282 ? 47282 : null,
+      generateKeyMaterial: async () => {
+        const generated = { privateKey: crypto.randomBytes(32).toString('base64'),
+          publicKey: crypto.randomBytes(32).toString('base64'), presharedKey: crypto.randomBytes(32).toString('base64') };
+        generatedMaterials.push(generated);
+        return generated;
+      } });
     const summary = await target.inspectBackup(backup);
-    assert.equal(summary.clientsCount, 1);
-    assert.equal(summary.peersCount, 1);
+    assert.equal(summary.clientsCount, 2);
+    assert.equal(summary.peersCount, 2);
+    assert.equal(summary.targetEndpoint, 'new.example.test:47282');
     const restored = await target.restoreBackup(backup);
     assert.equal(restored.status, 'ok');
-    assert.equal(activeConfig, config);
-    assert.equal((await target.getConfig(fingerprint)).config,
-      clientConfig.replace('Endpoint = old.example.test:55424', 'Endpoint = new.example.test:55424'));
+    assert.match(activeConfig, new RegExp(`PrivateKey = ${targetPrivateKey.replace(/[+]/g, '\\+')}`));
+    assert.match(activeConfig, /ListenPort = 47282/);
+    assert.match(activeConfig, /Jc = 9/);
+    assert.doesNotMatch(activeConfig, /Jc = 4/);
+    assert.doesNotMatch(activeConfig, new RegExp(peerPublicKey.replace(/[+]/g, '\\+')));
+    const newFingerprint = crypto.createHash('sha256').update(generatedMaterials[0].publicKey).digest('hex').slice(0, 12);
+    const importedFingerprint = crypto.createHash('sha256').update(generatedMaterials[1].publicKey).digest('hex').slice(0, 12);
+    const freshConfig = (await target.getConfig(newFingerprint)).config;
+    assert.match(freshConfig, /Endpoint = new.example.test:47282/);
+    assert.match(freshConfig, /Address = 10.9.0.2\/32/);
+    assert.match(freshConfig, /Jc = 9/);
+    assert.match(freshConfig, new RegExp(serverPublicKey.replace(/[+]/g, '\\+')));
+    assert.doesNotMatch(freshConfig, /old.example.test/);
+    assert.match((await target.getConfig(importedFingerprint)).config, /Endpoint = new.example.test:47282/);
+    await assert.rejects(target.getConfig(fingerprint), { code: 'config_unavailable' });
     const after = await target.createBackup();
     assert.equal(after.payload.panel.users[0].name, 'Restored phone');
-    assert.equal(after.payload.panel.metadata.notes[fingerprint], 'Восстановленная заметка');
-    assert.equal(after.payload.panel.metadata.telegrams[fingerprint], '@restored');
+    assert.equal(after.payload.panel.metadata.notes[newFingerprint], 'Восстановленная заметка');
+    assert.equal(after.payload.panel.metadata.telegrams[newFingerprint], '@restored');
+    assert.equal(after.payload.panel.users[0].usage.receivedBytes, 20);
+    assert.equal(after.payload.awg.clientsTable[0].userData.clientName, 'Restored phone');
+    assert.equal(after.payload.awg.clientsTable[1].userData.clientName, 'Amnezia import');
+    const withOldObfuscation = await target.restoreBackup(backup, null, { restoreObfuscation: true });
+    assert.equal(withOldObfuscation.restoredObfuscation, true);
+    assert.match(activeConfig, /Jc = 4/);
+    const reissuedFingerprint = crypto.createHash('sha256').update(generatedMaterials[2].publicKey).digest('hex').slice(0, 12);
+    assert.match((await target.getConfig(reissuedFingerprint)).config, /Jc = 4/);
+    activeConfig = activeConfig.replace('ListenPort = 47282', 'ListenPort = 55424');
+    await assert.rejects(target.inspectBackup(backup), { code: 'target_awg_port_unpublished' });
+    activeConfig = activeConfig.replace('ListenPort = 55424', 'ListenPort = 47282');
+    const beforeFailedRestore = activeConfig;
+    failProfileAfterRestore = true;
+    await assert.rejects(target.restoreBackup(backup), { code: 'restore_panel_failed' });
+    assert.equal(activeConfig, beforeFailedRestore);
+    assert.match((await target.getConfig(reissuedFingerprint)).config, /Jc = 4/);
   } finally {
     await new Promise((resolve) => receiver.close(resolve));
   }

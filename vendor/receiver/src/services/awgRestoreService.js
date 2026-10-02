@@ -45,7 +45,10 @@ function validateRestoreConfig(value) {
     throw Object.assign(new Error('AWG interface or private key is missing'), { code: 'invalid_restore_config', statusCode: 400 });
   }
   const parsed = parseAwgConfig(configText);
-  if (!parsed.hasInterface || parsed.interfaceAddresses.length !== 1) {
+  const ports = [...configText.matchAll(/^\s*ListenPort\s*=\s*(\d+)\s*$/gmi)];
+  const listenPort = ports.length === 1 ? Number(ports[0][1]) : NaN;
+  if (!parsed.hasInterface || parsed.interfaceAddresses.length !== 1
+      || !Number.isInteger(listenPort) || listenPort < 1 || listenPort > 65535) {
     throw Object.assign(new Error('AWG config must contain one interface address'), { code: 'invalid_restore_config', statusCode: 400 });
   }
   const keys = new Set();
@@ -62,7 +65,7 @@ function validateRestoreConfig(value) {
       addresses.add(allowedIp);
     }
   }
-  return { configText, parsed };
+  return { configText, parsed: { ...parsed, listenPort } };
 }
 
 function validateClientsTable(value, configPeers) {
@@ -99,7 +102,8 @@ async function syncRuntime(config) {
 
 async function verifyRuntime(expected) {
   const [status, inventory] = await Promise.all([getAwgStatus(), getAwgPeers()]);
-  if (status.status !== 'ok' || inventory.status !== 'ok' || inventory.peers.length !== expected.peers.length) {
+  if (status.status !== 'ok' || inventory.status !== 'ok' || inventory.peers.length !== expected.peers.length
+      || status.listenPort !== expected.listenPort) {
     throw Object.assign(new Error('AWG runtime verification failed'), { code: 'restore_verify_failed', statusCode: 409 });
   }
   const actual = new Map(inventory.peers.map((peer) => [peer.publicKey, [...(peer.allowedIps || [])].sort()]));
