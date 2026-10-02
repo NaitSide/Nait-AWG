@@ -3,12 +3,13 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
 const { DatabaseSync } = require('node:sqlite');
 const QRCode = require('qrcode');
-const { encryptBackup, plainBackup, validatePassphrase } = require('./backupService');
-const { createUsageStore } = require('./usageService');
+const { decryptBackup, encryptBackup, plainBackup, validatePassphrase } = require('./backupService');
+const { createUsageStore, validState: validUsageState } = require('./usageService');
 
 const execFileAsync = promisify(execFile);
 
@@ -234,6 +235,15 @@ function createClientStore(filePath) {
 
   return {
     snapshot() { return Buffer.from(db.serialize()); },
+    snapshotState() {
+      return {
+        clients: db.prepare(`SELECT client_id AS clientId, label, receiver_label AS receiverLabel,
+          public_key_fingerprint AS publicKeyFingerprint, address, encrypted_config AS encryptedConfig,
+          status, created_at AS createdAt, deleted_at AS deletedAt FROM clients ORDER BY created_at ASC`).all(),
+        gates: db.prepare(`SELECT public_key_fingerprint AS publicKeyFingerprint, public_key AS publicKey,
+          device_id AS deviceId, address, created_at AS createdAt FROM peer_gate_addresses`).all()
+      };
+    },
     listForBackup() {
       return db.prepare(`SELECT label AS name, address AS vpnAddress,
         public_key_fingerprint AS publicKeyFingerprint, status AS recordStatus,
@@ -280,6 +290,24 @@ function createClientStore(filePath) {
     reservedAddresses() {
       return db.prepare(`SELECT public_key_fingerprint AS fingerprint, address FROM clients WHERE status = 'active'
         UNION SELECT public_key_fingerprint AS fingerprint, address FROM peer_gate_addresses`).all();
+    },
+    replace(state) {
+      const insertClient = db.prepare(`INSERT INTO clients (client_id, label, receiver_label, public_key_fingerprint,
+        address, encrypted_config, status, created_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      const insertGate = db.prepare(`INSERT INTO peer_gate_addresses (public_key_fingerprint, public_key, device_id,
+        address, created_at) VALUES (?, ?, ?, ?, ?)`);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.exec('DELETE FROM peer_gate_addresses; DELETE FROM clients;');
+        for (const client of state.clients) insertClient.run(client.clientId, client.label, client.receiverLabel,
+          client.publicKeyFingerprint, client.address, client.encryptedConfig, client.status, client.createdAt, client.deletedAt);
+        for (const gate of state.gates) insertGate.run(gate.publicKeyFingerprint, gate.publicKey, gate.deviceId,
+          gate.address, gate.createdAt);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
     }
   };
 }
@@ -317,8 +345,141 @@ function createNoteStore(filePath) {
       } finally {
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
       }
+    },
+    replace(value) {
+      if (value?.version !== 1 || !value.notes || typeof value.notes !== 'object' || Array.isArray(value.notes)
+          || !value.telegrams || typeof value.telegrams !== 'object' || Array.isArray(value.telegrams)
+          || Object.entries(value.notes).some(([id, note]) => !/^[a-f0-9]{12}$/.test(id) || typeof note !== 'string' || note.length > 2000)
+          || Object.entries(value.telegrams).some(([id, telegram]) => !/^[a-f0-9]{12}$/.test(id) || typeof telegram !== 'string' || telegram.length > 80)) {
+        throw createHttpError(400, 'invalid_backup_metadata', 'Заметки в резервной копии повреждены.');
+      }
+      const nextNotes = { ...value.notes }, nextTelegrams = { ...value.telegrams };
+      const tempPath = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      try {
+        fs.writeFileSync(tempPath, JSON.stringify({ version: 1, notes: nextNotes, telegrams: nextTelegrams }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+        fs.renameSync(tempPath, filePath);
+        notes = nextNotes;
+        telegrams = nextTelegrams;
+      } finally {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      }
     }
   };
+}
+
+function backupBuffer(value) {
+  if (typeof value !== 'string' || value.length < 100 || value.length > 30 * 1024 * 1024
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw createHttpError(400, 'invalid_backup_database', 'База панели в резервной копии повреждена.');
+  }
+  const result = Buffer.from(value, 'base64');
+  if (result.length < 100 || result.length > 20 * 1024 * 1024) {
+    throw createHttpError(400, 'invalid_backup_database', 'Размер базы панели в резервной копии недопустим.');
+  }
+  return result;
+}
+
+function prepareRestoreDatabase(encoded, sourceDataKey, targetDataKey, targetEndpoint = '') {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'nait-awg-restore-'));
+  const databasePath = path.join(directory, 'clients.db');
+  let database;
+  try {
+    fs.writeFileSync(databasePath, backupBuffer(encoded), { mode: 0o600, flag: 'wx' });
+    database = new DatabaseSync(databasePath, { readOnly: true });
+    if (database.prepare('PRAGMA integrity_check').get()?.integrity_check !== 'ok') {
+      throw createHttpError(400, 'invalid_backup_database', 'Проверка целостности базы панели не пройдена.');
+    }
+    const columns = new Set(database.prepare('PRAGMA table_info(clients)').all().map((column) => column.name));
+    const gateColumns = new Set(database.prepare('PRAGMA table_info(peer_gate_addresses)').all().map((column) => column.name));
+    for (const name of ['client_id', 'label', 'receiver_label', 'public_key_fingerprint', 'address', 'encrypted_config', 'status', 'created_at', 'deleted_at']) {
+      if (!columns.has(name)) throw createHttpError(400, 'invalid_backup_database', 'Структура базы панели не поддерживается.');
+    }
+    for (const name of ['public_key_fingerprint', 'public_key', 'device_id', 'address', 'created_at']) {
+      if (!gateColumns.has(name)) throw createHttpError(400, 'invalid_backup_database', 'Структура адресов клиентов не поддерживается.');
+    }
+    const clients = database.prepare(`SELECT client_id AS clientId, label, receiver_label AS receiverLabel,
+      public_key_fingerprint AS publicKeyFingerprint, address, encrypted_config AS encryptedConfig,
+      status, created_at AS createdAt, deleted_at AS deletedAt FROM clients ORDER BY created_at ASC`).all();
+    const gates = database.prepare(`SELECT public_key_fingerprint AS publicKeyFingerprint, public_key AS publicKey,
+      device_id AS deviceId, address, created_at AS createdAt FROM peer_gate_addresses`).all();
+    if (clients.length > 10000 || gates.length > 10000) throw createHttpError(400, 'invalid_backup_database', 'В резервной копии слишком много записей.');
+    const ids = new Set(), fingerprints = new Set();
+    for (const client of clients) {
+      if (typeof client.clientId !== 'string' || client.clientId.length < 1 || client.clientId.length > 120
+          || typeof client.label !== 'string' || client.label.length < 1 || client.label.length > 80
+          || !SAFE_LABEL_PATTERN.test(client.receiverLabel || '') || !/^[a-f0-9]{12}$/.test(client.publicKeyFingerprint || '')
+          || !isHostAddress(client.address) || !['active', 'deleted'].includes(client.status)
+          || typeof client.createdAt !== 'string' || client.createdAt.length > 64
+          || (client.deletedAt !== null && (typeof client.deletedAt !== 'string' || client.deletedAt.length > 64))
+          || ids.has(client.clientId) || fingerprints.has(client.publicKeyFingerprint)) {
+        throw createHttpError(400, 'invalid_backup_database', 'Записи клиентов в резервной копии повреждены.');
+      }
+      ids.add(client.clientId); fingerprints.add(client.publicKeyFingerprint);
+      if (client.encryptedConfig !== null) {
+        try {
+          const configText = decrypt(client.encryptedConfig, sourceDataKey);
+          if (configText.length > 1024 * 1024 || !/^\[Interface\]/m.test(configText) || !/^PrivateKey\s*=/m.test(configText)) throw new Error('invalid client config');
+          const restoredConfig = targetEndpoint
+            ? configText.replace(/^Endpoint\s*=\s*.+$/mi, `Endpoint = ${targetEndpoint}`)
+            : configText;
+          if (targetEndpoint && restoredConfig === configText && !new RegExp(`^Endpoint\\s*=\\s*${targetEndpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'mi').test(configText)) {
+            throw new Error('client endpoint is missing');
+          }
+          client.encryptedConfig = encrypt(restoredConfig, targetDataKey);
+        } catch {
+          throw createHttpError(400, 'invalid_backup_client_config', 'Один из клиентских конфигов в копии повреждён.');
+        }
+      }
+    }
+    for (const gate of gates) {
+      if (!/^[a-f0-9]{12}$/.test(gate.publicKeyFingerprint || '') || !KEY_PATTERN.test(gate.publicKey || '')
+          || typeof gate.deviceId !== 'string' || gate.deviceId.length < 1 || gate.deviceId.length > 120
+          || !isHostAddress(gate.address) || typeof gate.createdAt !== 'string' || gate.createdAt.length > 64) {
+        throw createHttpError(400, 'invalid_backup_database', 'Адреса клиентов в резервной копии повреждены.');
+      }
+    }
+    return { clients, gates };
+  } finally {
+    database?.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function restoredPeerMap(config) {
+  const peers = new Map();
+  for (const block of String(config || '').split(/^\s*\[Peer\]\s*$/gmi).slice(1)) {
+    const publicKey = /^\s*PublicKey\s*=\s*(\S+)\s*$/mi.exec(block)?.[1] || '';
+    if (!KEY_PATTERN.test(publicKey)) continue;
+    const allowedIps = (/^\s*AllowedIPs\s*=\s*(.*?)\s*$/mi.exec(block)?.[1] || '')
+      .split(',').map((value) => value.trim()).filter(Boolean);
+    peers.set(createFingerprint(publicKey), allowedIps);
+  }
+  return peers;
+}
+
+function buildRestoreClientsTable(config, database, source) {
+  const sourceNames = new Map();
+  const values = Array.isArray(source)
+    ? source.map((client) => [client?.clientId, client?.userData])
+    : source && typeof source === 'object'
+      ? Object.entries(source).map(([clientId, value]) => [clientId, value?.userData || value])
+      : [];
+  for (const [clientId, userData] of values) {
+    if (KEY_PATTERN.test(clientId || '') && userData && typeof userData === 'object') sourceNames.set(clientId, userData);
+  }
+  const labels = new Map(database.clients.map((client) => [client.publicKeyFingerprint, client.label]));
+  const blocks = String(config || '').split(/^\s*\[Peer\]\s*$/gmi).slice(1);
+  return blocks.map((block, index) => {
+    const clientId = /^\s*PublicKey\s*=\s*(\S+)\s*$/mi.exec(block)?.[1] || '';
+    if (!KEY_PATTERN.test(clientId)) throw createHttpError(400, 'invalid_backup_awg_config', 'PublicKey клиента в конфиге AWG повреждён.');
+    const existing = sourceNames.get(clientId) || {};
+    const name = String(existing.clientName || labels.get(createFingerprint(clientId)) || `Client ${index + 1}`)
+      .replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80);
+    const creationDate = typeof existing.creationDate === 'string' && existing.creationDate.length <= 64
+      ? existing.creationDate
+      : undefined;
+    return { clientId, userData: { clientName: name || `Client ${index + 1}`, ...(creationDate ? { creationDate } : {}) } };
+  });
 }
 
 function createAwgService(env = process.env, dependencies = {}) {
@@ -338,9 +499,19 @@ function createAwgService(env = process.env, dependencies = {}) {
       { timeout: 30000, maxBuffer: 2 * 1024 * 1024, encoding: 'utf8', windowsHide: true });
     return stdout;
   });
+  const readAwgClientsTable = dependencies.readAwgClientsTable || (dependencies.readAwgConfig ? async () => null : async () => {
+    try {
+      const { stdout } = await execFileAsync('docker', ['exec', containerName, 'cat', '/opt/amnezia/awg/clientsTable'],
+        { timeout: 30000, maxBuffer: 1024 * 1024, encoding: 'utf8', windowsHide: true });
+      return JSON.parse(stdout);
+    } catch {
+      return null;
+    }
+  });
   const gateReadCache = new Map();
   let gateQueue = Promise.resolve();
   let backupInProgress = false;
+  let restoreInProgress = false;
   let usageSampleInFlight = null;
   let usageTimer = null;
   function withGateLock(task) {
@@ -509,12 +680,13 @@ function createAwgService(env = process.env, dependencies = {}) {
   async function createBackup(passphrase) {
     const encrypted = passphrase !== undefined && passphrase !== null && passphrase !== '';
     if (encrypted) validatePassphrase(passphrase);
-    if (backupInProgress) throw createHttpError(429, 'backup_busy', 'Резервная копия уже создаётся.');
+    if (backupInProgress || restoreInProgress) throw createHttpError(429, 'backup_busy', 'Резервная копия или восстановление уже выполняется.');
     backupInProgress = true;
     try {
       return await withGateLock(async () => {
       await sampleUsage();
       const before = await readAwgConfig();
+      const clientsTableBefore = await readAwgClientsTable();
       if (typeof before !== 'string' || before.length < 100 || before.length > 2 * 1024 * 1024
           || !/^\[Interface\]/m.test(before) || !/^PrivateKey\s*=/m.test(before)) {
         throw createHttpError(503, 'awg_config_unavailable', 'Постоянный конфиг AWG недоступен. Копия не создана.');
@@ -535,18 +707,132 @@ function createAwgService(env = process.env, dependencies = {}) {
       });
       const usageHistory = usageStore.snapshot();
       const after = await readAwgConfig();
-      if (before !== after) {
+      const clientsTableAfter = await readAwgClientsTable();
+      if (before !== after || JSON.stringify(clientsTableBefore) !== JSON.stringify(clientsTableAfter)) {
         throw createHttpError(409, 'backup_state_changed', 'Конфигурация AWG изменилась во время снимка. Повторите скачивание.');
       }
       const createdAt = new Date().toISOString();
       const snapshot = { format: 'nait-awg-snapshot', version: 1, createdAt,
-        awg: { configFile: 'awg0.conf', config: before },
+        awg: { configFile: 'awg0.conf', config: before, clientsTable: clientsTableBefore },
         panel: { users, database: database.toString('base64'), dataKey: env.NAIT_AWG_DATA_KEY,
           metadata, usageHistory, clientDefaults: { endpointHost, dns, allowedIps, keepalive } } };
       return encrypted ? encryptBackup(snapshot, passphrase, createdAt) : plainBackup(snapshot, createdAt);
       });
     } finally {
       backupInProgress = false;
+    }
+  }
+
+  async function prepareRestore(envelope, passphrase) {
+    let snapshot;
+    try {
+      snapshot = await decryptBackup(envelope, passphrase);
+    } catch (error) {
+      if (error.code === 'invalid_backup_passphrase') throw error;
+      throw createHttpError(400, 'backup_decryption_failed', envelope?.encryption
+        ? 'Не удалось расшифровать копию. Проверьте пароль и целостность файла.'
+        : 'Файл резервной копии повреждён или имеет неподдерживаемый формат.');
+    }
+    if (snapshot?.format !== 'nait-awg-snapshot' || snapshot.version !== 1
+        || typeof snapshot.createdAt !== 'string' || !Number.isFinite(new Date(snapshot.createdAt).getTime())) {
+      throw createHttpError(400, 'invalid_backup_snapshot', 'Содержимое резервной копии не поддерживается.');
+    }
+    const config = snapshot.awg?.config;
+    if (typeof config !== 'string' || Buffer.byteLength(config, 'utf8') < 100
+        || Buffer.byteLength(config, 'utf8') > 2 * 1024 * 1024
+        || !/^\[Interface\]/m.test(config) || !/^PrivateKey\s*=/m.test(config)) {
+      throw createHttpError(400, 'invalid_backup_awg_config', 'Конфиг AWG в резервной копии повреждён.');
+    }
+    const listenPort = Number(/^ListenPort\s*=\s*(\d+)\s*$/mi.exec(config)?.[1]);
+    if (!Number.isInteger(listenPort) || listenPort < 1 || listenPort > 65535) {
+      throw createHttpError(400, 'invalid_backup_awg_config', 'В конфиге AWG отсутствует корректный порт.');
+    }
+    const targetEndpoint = endpointHost ? `${endpointHost}:${listenPort}` : '';
+    let sourceDataKey;
+    try { sourceDataKey = base64Key(snapshot.panel?.dataKey, 'backup data key'); }
+    catch { throw createHttpError(400, 'invalid_backup_data_key', 'Ключ данных панели в резервной копии повреждён.'); }
+    let database;
+    try { database = prepareRestoreDatabase(snapshot.panel?.database, sourceDataKey, dataKey, targetEndpoint); }
+    finally { sourceDataKey.fill(0); }
+    const configPeers = restoredPeerMap(config);
+    for (const client of database.clients.filter((item) => item.status === 'active')) {
+      const allowedIps = configPeers.get(client.publicKeyFingerprint);
+      if (!allowedIps || (allowedIps.length > 0 && !allowedIps.includes(client.address))) {
+        throw createHttpError(400, 'backup_peer_mismatch', 'Клиенты панели не совпадают с peer в конфиге AWG.');
+      }
+    }
+    const clientsTable = buildRestoreClientsTable(config, database, snapshot.awg?.clientsTable);
+    const metadata = snapshot.panel?.metadata;
+    const metadataTelegrams = metadata?.telegrams ?? {};
+    if (metadata?.version !== 1 || !metadata.notes || typeof metadata.notes !== 'object' || Array.isArray(metadata.notes)
+        || !metadataTelegrams || typeof metadataTelegrams !== 'object' || Array.isArray(metadataTelegrams)) {
+      throw createHttpError(400, 'invalid_backup_metadata', 'Заметки в резервной копии повреждены.');
+    }
+    const normalizedMetadata = { version: 1, notes: metadata.notes, telegrams: metadataTelegrams };
+    // Validate without touching disk.
+    if (Object.entries(normalizedMetadata.notes).some(([id, note]) => !/^[a-f0-9]{12}$/.test(id) || typeof note !== 'string' || note.length > 2000)
+        || Object.entries(normalizedMetadata.telegrams).some(([id, telegram]) => !/^[a-f0-9]{12}$/.test(id) || typeof telegram !== 'string' || telegram.length > 80)) {
+      throw createHttpError(400, 'invalid_backup_metadata', 'Заметки в резервной копии повреждены.');
+    }
+    const usageHistory = snapshot.panel?.usageHistory;
+    if (!validUsageState(usageHistory)) {
+      throw createHttpError(400, 'invalid_backup_usage', 'История трафика в резервной копии повреждена.');
+    }
+    return { snapshot, config, clientsTable, database, metadata: normalizedMetadata, usageHistory,
+      summary: { createdAt: snapshot.createdAt, encrypted: Boolean(envelope?.encryption),
+        clientsCount: database.clients.filter((client) => client.status === 'active').length,
+        deletedClientsCount: database.clients.filter((client) => client.status === 'deleted').length,
+        peersCount: (config.match(/^\s*\[Peer\]\s*$/gmi) || []).length,
+        sourceEndpoint: snapshot.panel?.clientDefaults?.endpointHost
+          ? `${snapshot.panel.clientDefaults.endpointHost}:${listenPort}`
+          : '—',
+        targetEndpoint: targetEndpoint || 'не изменяется' } };
+  }
+
+  async function inspectBackup(envelope, passphrase) {
+    return (await prepareRestore(envelope, passphrase)).summary;
+  }
+
+  async function restoreBackup(envelope, passphrase) {
+    if (restoreInProgress || backupInProgress) throw createHttpError(429, 'restore_busy', 'Восстановление или резервное копирование уже выполняется.');
+    restoreInProgress = true;
+    try {
+      return await withGateLock(async () => {
+        const prepared = await prepareRestore(envelope, passphrase);
+        const previous = {
+          config: await readAwgConfig(),
+          database: clientStore.snapshotState(),
+          metadata: noteStore.snapshot(),
+          usageHistory: usageStore.snapshot(),
+          rawClientsTable: await readAwgClientsTable()
+        };
+        previous.clientsTable = buildRestoreClientsTable(previous.config, previous.database, previous.rawClientsTable);
+        const restoreConfig = async (config, clientsTable) => receiver('/awg/restore', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-request-id': crypto.randomUUID() },
+          body: JSON.stringify({ config, clientsTable })
+        });
+        await restoreConfig(prepared.config, prepared.clientsTable);
+        try {
+          clientStore.replace(prepared.database);
+          noteStore.replace(prepared.metadata);
+          usageStore.replace(prepared.usageHistory);
+          gateReadCache.clear();
+        } catch (error) {
+          let rollbackFailed = false;
+          try { clientStore.replace(previous.database); } catch { rollbackFailed = true; }
+          try { noteStore.replace(previous.metadata); } catch { rollbackFailed = true; }
+          try { usageStore.replace(previous.usageHistory); } catch { rollbackFailed = true; }
+          try { await restoreConfig(previous.config, previous.clientsTable); } catch { rollbackFailed = true; }
+          if (rollbackFailed) {
+            throw createHttpError(500, 'restore_rollback_failed', 'Восстановление не завершено, автоматический откат требует ручной проверки.');
+          }
+          throw createHttpError(500, 'restore_panel_failed', 'Данные панели не восстановлены. Предыдущее состояние возвращено.');
+        }
+        return { status: 'ok', restoredAt: new Date().toISOString(), ...prepared.summary };
+      });
+    } finally {
+      restoreInProgress = false;
     }
   }
 
@@ -621,7 +907,8 @@ function createAwgService(env = process.env, dependencies = {}) {
   }
 
   return { listPeers, createPeer, getConfig, getQr, deletePeer, updatePeerMetadata, updatePeerNote,
-    readPeerAccess, setPeerAccess, createBackup, getUsage, sampleUsage, startUsageTracking, receiver };
+    readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
+    getUsage, sampleUsage, startUsageTracking, receiver };
 }
 
 module.exports = { createHttpError, createAwgService, safeClientLabel };

@@ -412,15 +412,14 @@ function appendPeerBlock(configText, peer) {
   return `${base}${buildPeerBlock(peer)}`;
 }
 
-async function writeConfigToContainer(config, configText, requestId) {
+async function writeTextToContainer(config, text, targetPath, requestId, localName = 'awg0.conf') {
   const tmpDir = await ensureReceiverTmpDir();
   const safeId = getSafeRequestId(requestId);
-  const containerConfigPath = getContainerConfigPath(config);
-  const containerTempPath = `${containerConfigPath}.tmp.${safeId}`;
-  const localTempPath = path.join(tmpDir, `awg0.conf.write.${safeId}.${Date.now()}`);
+  const containerTempPath = `${targetPath}.tmp.${safeId}`;
+  const localTempPath = path.join(tmpDir, `${localName}.write.${safeId}.${Date.now()}`);
   const receiverGroupId = getReceiverGroupId();
 
-  await fs.writeFile(localTempPath, configText, { mode: 0o600 });
+  await fs.writeFile(localTempPath, text, { mode: 0o600 });
   await fs.chmod(localTempPath, 0o600);
 
   try {
@@ -435,7 +434,7 @@ async function writeConfigToContainer(config, configText, requestId) {
     await runFile('docker', buildConfigInstallArgs(
       config.containerName,
       containerTempPath,
-      containerConfigPath,
+      targetPath,
       receiverGroupId
     ), {
       timeoutMs: Number(process.env.AWG_CREATE_PEER_TIMEOUT_MS || 30000)
@@ -445,10 +444,13 @@ async function writeConfigToContainer(config, configText, requestId) {
   }
 }
 
-async function restoreConfigFromBackup(config, backupPath, requestId) {
+async function writeConfigToContainer(config, configText, requestId) {
+  return writeTextToContainer(config, configText, getContainerConfigPath(config), requestId);
+}
+
+async function restoreFileFromBackup(config, backupPath, targetPath, requestId) {
   const safeId = getSafeRequestId(requestId);
-  const containerConfigPath = getContainerConfigPath(config);
-  const containerTempPath = `${containerConfigPath}.rollback.${safeId}`;
+  const containerTempPath = `${targetPath}.rollback.${safeId}`;
   const receiverGroupId = getReceiverGroupId();
 
   await runFile('docker', [
@@ -462,11 +464,15 @@ async function restoreConfigFromBackup(config, backupPath, requestId) {
   await runFile('docker', buildConfigInstallArgs(
     config.containerName,
     containerTempPath,
-    containerConfigPath,
+    targetPath,
     receiverGroupId
   ), {
     timeoutMs: Number(process.env.AWG_CREATE_PEER_TIMEOUT_MS || 30000)
   });
+}
+
+async function restoreConfigFromBackup(config, backupPath, requestId) {
+  return restoreFileFromBackup(config, backupPath, getContainerConfigPath(config), requestId);
 }
 
 module.exports = {
@@ -484,6 +490,8 @@ module.exports = {
   readConfigFromContainer,
   replacePeerAllowedIps,
   removePeerBlock,
+  restoreFileFromBackup,
   restoreConfigFromBackup,
-  writeConfigToContainer
+  writeConfigToContainer,
+  writeTextToContainer
 };

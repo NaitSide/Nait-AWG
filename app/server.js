@@ -46,7 +46,12 @@ function loadAdminAuthState() {
 let adminAuthState = loadAdminAuthState();
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '32kb' }));
+const standardJsonParser = express.json({ limit: '32kb' });
+const restoreJsonParser = express.json({ limit: '40mb' });
+app.use((req, res, next) => {
+  if (req.path === '/api/restore/inspect' || req.path === '/api/restore') return next();
+  return standardJsonParser(req, res, next);
+});
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -266,6 +271,21 @@ app.post('/api/backup', requireAuth, async (req, res) => {
     return res.type('application/json').send(JSON.stringify(backup, null, 2) + '\n');
   } catch (error) { return sendError(res, error); }
 });
+app.post('/api/restore/inspect', requireAuth, restoreJsonParser, async (req, res) => {
+  const origin = req.get('origin');
+  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
+  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
+  try { return res.json(await panelService.inspectBackup(req.body?.backup, req.body?.passphrase)); }
+  catch (error) { return sendError(res, error); }
+});
+app.post('/api/restore', requireAuth, restoreJsonParser, async (req, res) => {
+  const origin = req.get('origin');
+  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
+  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
+  if (req.body?.confirmed !== true) return res.status(400).json({ code: 'restore_not_confirmed', message: 'Подтвердите замену текущих данных.' });
+  try { return res.json(await panelService.restoreBackup(req.body?.backup, req.body?.passphrase)); }
+  catch (error) { return sendError(res, error); }
+});
 app.get('/api/peers', requireAuth, async (_req, res) => { try { res.json(await panelService.listPeers()); } catch (error) { sendError(res, error); } });
 app.post('/api/peers', requireAuth, async (req, res) => { try { res.status(201).json(await panelService.createPeer(req.body)); } catch (error) { sendError(res, error); } });
 app.get('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await panelService.readPeerAccess(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
@@ -276,7 +296,7 @@ app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { r
 app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
 app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
 app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });
-app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : ''; res.type('html').send(renderAwgPanel({ peers, profile, selectedId, notice, adminLogin })); } catch (error) { sendError(res, error); } });
+app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : req.query.restored ? 'Резервная копия успешно восстановлена.' : ''; res.type('html').send(renderAwgPanel({ peers, profile, selectedId, notice, adminLogin })); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await panelService.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.redirect(303, '/panel'); } catch (error) { sendError(res, error); } });
 app.get('/', (req, res, next) => { if (isAuthenticated(req)) return res.redirect(303, '/panel'); return next(); });

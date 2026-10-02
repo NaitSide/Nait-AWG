@@ -25,6 +25,19 @@ function bytes(value) {
   return number;
 }
 
+function validState(value) {
+  return value?.version === 1 && value.peers && typeof value.peers === 'object' && !Array.isArray(value.peers)
+    && Object.entries(value.peers).every(([id, peer]) => FINGERPRINT_PATTERN.test(id)
+      && KEY_PATTERN.test(peer?.publicKey || '') && peer.months && typeof peer.months === 'object' && !Array.isArray(peer.months)
+      && Number.isSafeInteger(peer.lastRx) && peer.lastRx >= 0
+      && Number.isSafeInteger(peer.lastTx) && peer.lastTx >= 0
+      && Number.isSafeInteger(peer.totalRx) && peer.totalRx >= 0
+      && Number.isSafeInteger(peer.totalTx) && peer.totalTx >= 0
+      && Object.entries(peer.months).every(([month, totals]) => /^\d{4}-\d{2}$/.test(month)
+        && Number.isSafeInteger(totals?.rx) && totals.rx >= 0
+        && Number.isSafeInteger(totals?.tx) && totals.tx >= 0));
+}
+
 function createUsageStore(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
   let state = { version: 1, startedAt: null, updatedAt: null, peers: {} };
@@ -33,11 +46,7 @@ function createUsageStore(filePath) {
     if (fs.existsSync(filePath)) {
       if (fs.statSync(filePath).size > MAX_FILE_BYTES) throw new Error('Usage file is too large');
       const loaded = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      if (loaded?.version !== 1 || !loaded.peers || typeof loaded.peers !== 'object' || Array.isArray(loaded.peers)
-          || Object.entries(loaded.peers).some(([id, peer]) => !FINGERPRINT_PATTERN.test(id)
-            || !KEY_PATTERN.test(peer?.publicKey || '') || !peer.months || typeof peer.months !== 'object'
-            || !Number.isSafeInteger(peer.lastRx) || !Number.isSafeInteger(peer.lastTx)
-            || !Number.isSafeInteger(peer.totalRx) || !Number.isSafeInteger(peer.totalTx))) {
+      if (!validState(loaded)) {
         throw new Error('Usage file has an unsupported format');
       }
       state = loaded;
@@ -118,7 +127,13 @@ function createUsageStore(filePath) {
         .map(([month, totals]) => ({ month, receivedBytes: totals.tx, sentBytes: totals.rx })) };
   }
 
-  return { record, summary, snapshot() { available(); return structuredClone(state); } };
+  function replace(value) {
+    if (!validState(value)) throw usageError('История трафика в резервной копии повреждена.', 'invalid_backup_usage');
+    persist(structuredClone(value));
+    readFailure = null;
+  }
+
+  return { record, replace, summary, snapshot() { available(); return structuredClone(state); } };
 }
 
-module.exports = { createUsageStore };
+module.exports = { createUsageStore, validState };

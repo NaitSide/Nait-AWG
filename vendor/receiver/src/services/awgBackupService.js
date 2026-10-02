@@ -47,6 +47,7 @@ async function createPeerBackup(config, containerConfigPath, operation) {
   const configDir = path.posix.dirname(containerConfigPath);
   const files = [
     path.posix.basename(containerConfigPath),
+    'clientsTable',
     'wireguard_psk.key',
     'wireguard_server_private_key.key',
     'wireguard_server_public_key.key'
@@ -92,7 +93,8 @@ async function createPeerBackup(config, containerConfigPath, operation) {
   return {
     backupId,
     backupDir,
-    configBackupPath: path.join(backupDir, 'awg0.conf')
+    configBackupPath: path.join(backupDir, 'awg0.conf'),
+    clientsTableBackupPath: copied.includes('clientsTable') ? path.join(backupDir, 'clientsTable') : null
   };
 }
 
@@ -104,7 +106,12 @@ async function createPeerDeleteBackup(config, containerConfigPath) {
   return createPeerBackup(config, containerConfigPath, 'peer_delete');
 }
 
+async function createConfigRestoreBackup(config, containerConfigPath) {
+  return createPeerBackup(config, containerConfigPath, 'config_restore');
+}
+
 module.exports = {
+  createConfigRestoreBackup,
   createPeerCreateBackup,
   createPeerDeleteBackup
 };

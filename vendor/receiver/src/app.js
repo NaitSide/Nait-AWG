@@ -14,7 +14,7 @@ if (host !== '127.0.0.1' || !Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error('Nait-AWG Receiver must bind to 127.0.0.1 on a valid port');
 }
 
-app.use(express.json({ limit: '32kb' }));
+app.use(express.json({ limit: '3mb' }));
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'nait-awg-receiver' }));
 app.use(requireReceiverAuth);
 app.use('/awg', awgRoutes);

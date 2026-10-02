@@ -19,6 +19,7 @@ const {
   readAwgGate,
   setAwgGate
 } = require('../services/awgGateService');
+const { restoreAwgConfig } = require('../services/awgRestoreService');
 
 const router = express.Router();
 
@@ -41,6 +42,15 @@ router.get('/profile', async (req, res, next) => {
 router.get('/peers', async (req, res, next) => {
   try {
     res.json(await getAwgPeers());
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/restore', async (req, res, next) => {
+  try {
+    const result = await restoreAwgConfig(req);
+    res.status(result.statusCode).json(result.body);
   } catch (error) {
     next(error);
   }

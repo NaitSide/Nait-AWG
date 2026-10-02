@@ -68,7 +68,7 @@ test('never-connected status is grey and has its own filter', () => {
 test('client row exposes a provisional access state for the checking button', () => {
   const html = render('', '', { accessState: 'on' });
   assert.match(html, /data-access-state="on"/);
-  assert.match(html, /panel\.js\?v=22/);
+  assert.match(html, /panel\.js\?v=23/);
   assert.match(html, /admin-password-popover/);
   assert.match(html, /adminPasswordRequirement/);
   assert.match(html, /novalidate/);
@@ -83,7 +83,7 @@ test('status badge opens a traffic modal without changing grey status colors', (
   assert.match(html, /id="usageMonthDetail" role="status"/);
 });
 
-test('backup card offers optional encryption and keeps restore disabled', () => {
+test('backup card offers export and a guarded restore workflow', () => {
   const html = render('', '');
   assert.match(html, /Резервная копия пользователей и настроек/);
   assert.match(html, /id="openBackup"/);
@@ -93,6 +93,11 @@ test('backup card offers optional encryption and keeps restore disabled', () => 
   assert.match(html, /id="backupPassword" type="password"/);
   assert.match(html, /id="backupPasswordConfirm" type="password"/);
   assert.match(html, /Без пароля файл будет содержать приватные ключи/);
-  assert.match(html, /Восстановить<\/button>/);
-  assert.match(html, /type="button" disabled title="Восстановление/);
+  assert.match(html, /id="openRestore"/);
+  assert.match(html, /id="restoreModal" aria-hidden="true"/);
+  assert.match(html, /id="restoreFile" type="file"/);
+  assert.match(html, /id="restoreConfirm" type="checkbox"/);
+  assert.match(html, /текущие данные будут заменены/);
+  assert.match(html, /panel\.js\?v=23/);
+  assert.match(html, /panel\.css\?v=25/);
 });

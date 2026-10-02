@@ -356,6 +356,7 @@ function showModal(id) {
   modal.setAttribute('aria-hidden', 'false');
   if (id === 'createModal') document.getElementById('clientLabel').focus();
   if (id === 'backupModal') document.getElementById('backupEncrypt').focus();
+  if (id === 'restoreModal') document.getElementById('restoreFile').focus();
 }
 let qrObjectUrl = null;
 let qrRequestId = 0;
@@ -365,6 +366,9 @@ let editBusy = false;
 let editingRow = null;
 let accessBusy = false;
 let backupBusy = false;
+let restoreBusy = false;
+let restoreBackupObject = null;
+let restoreInspected = false;
 let usageRequestId = 0;
 let accessModalRow = null;
 let accessModalTarget = null;
@@ -381,6 +385,7 @@ function closeModal(modal) {
   if (modal.id === 'editModal' && editBusy) return;
   if (modal.id === 'accessModal' && accessBusy) return;
   if (modal.id === 'backupModal' && backupBusy) return;
+  if (modal.id === 'restoreModal' && restoreBusy) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
   if (modal.id === 'backupModal') {
@@ -390,6 +395,7 @@ function closeModal(modal) {
     document.getElementById('backupPassword').required = false;
     document.getElementById('backupPasswordConfirm').required = false;
   }
+  if (modal.id === 'restoreModal') resetRestoreForm();
   if (modal.id === 'qrModal') {
     qrRequestId += 1;
     document.getElementById('qrImage').removeAttribute('src');
@@ -558,6 +564,10 @@ document.getElementById('openCreate').addEventListener('click', () => {
   showModal('createModal');
 });
 document.getElementById('openBackup').addEventListener('click', () => showModal('backupModal'));
+document.getElementById('openRestore').addEventListener('click', () => {
+  resetRestoreForm();
+  showModal('restoreModal');
+});
 document.getElementById('backupEncrypt').addEventListener('change', event => {
   const encrypted = event.target.checked;
   document.getElementById('backupPasswordFields').hidden = !encrypted;
@@ -622,6 +632,82 @@ document.getElementById('backupForm').addEventListener('submit', async event => 
     backupBusy = false;
     submit.disabled = false;
     submit.innerHTML = originalLabel;
+  }
+});
+
+function resetRestoreInspection() {
+  restoreBackupObject = null;
+  restoreInspected = false;
+  document.getElementById('restoreSummary').hidden = true;
+  document.getElementById('restoreConfirm').checked = false;
+  document.getElementById('restoreError').hidden = true;
+  document.getElementById('restoreSubmit').textContent = 'Проверить копию';
+}
+function resetRestoreForm() {
+  const form = document.getElementById('restoreForm');
+  form.reset();
+  document.getElementById('restoreFile').disabled = false;
+  document.getElementById('restorePassword').disabled = false;
+  resetRestoreInspection();
+}
+document.getElementById('restoreFile').addEventListener('change', resetRestoreInspection);
+document.getElementById('restorePassword').addEventListener('input', resetRestoreInspection);
+document.getElementById('restoreForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (restoreBusy) return;
+  const fileInput = document.getElementById('restoreFile');
+  const passwordInput = document.getElementById('restorePassword');
+  const confirmInput = document.getElementById('restoreConfirm');
+  const error = document.getElementById('restoreError');
+  const submit = document.getElementById('restoreSubmit');
+  error.hidden = true;
+  restoreBusy = true;
+  submit.disabled = true;
+  try {
+    if (!restoreInspected) {
+      const file = fileInput.files?.[0];
+      if (!file) throw new Error('Выберите файл резервной копии.');
+      if (file.size > 35 * 1024 * 1024) throw new Error('Файл резервной копии слишком большой.');
+      submit.textContent = 'Проверяем…';
+      try { restoreBackupObject = JSON.parse(await file.text()); }
+      catch { throw new Error('Файл не является корректной резервной копией JSON.'); }
+      const response = await fetch('/api/restore/inspect', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ backup: restoreBackupObject, passphrase: passwordInput.value || null })
+      });
+      const summary = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(summary.message || 'Не удалось проверить резервную копию.');
+      document.getElementById('restoreCreatedAt').textContent = new Date(summary.createdAt).toLocaleString('ru-RU');
+      document.getElementById('restoreClients').textContent = String(summary.clientsCount);
+      document.getElementById('restorePeers').textContent = String(summary.peersCount);
+      document.getElementById('restoreEndpoint').textContent = summary.sourceEndpoint || '—';
+      document.getElementById('restoreTargetEndpoint').textContent = summary.targetEndpoint || '—';
+      document.getElementById('restoreSummary').hidden = false;
+      fileInput.disabled = true;
+      passwordInput.disabled = true;
+      restoreInspected = true;
+      submit.textContent = 'Восстановить';
+      confirmInput.focus();
+      return;
+    }
+    if (!confirmInput.checked) {
+      throw new Error('Подтвердите замену текущих данных.');
+    }
+    submit.textContent = 'Восстанавливаем…';
+    const response = await fetch('/api/restore', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+      body: JSON.stringify({ backup: restoreBackupObject, passphrase: passwordInput.value || null, confirmed: true })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Не удалось восстановить резервную копию.');
+    window.location.assign('/panel?restored=1');
+  } catch (failure) {
+    error.textContent = failure.message || 'Не удалось восстановить резервную копию.';
+    error.hidden = false;
+  } finally {
+    restoreBusy = false;
+    submit.disabled = false;
+    submit.textContent = restoreInspected ? 'Восстановить' : 'Проверить копию';
   }
 });
 createForm.addEventListener('submit', async (event) => {
@@ -714,7 +800,7 @@ document.querySelectorAll('[data-close-modal]').forEach(button => button.addEven
 document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) closeModal(modal); }));
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
-  const topModal = document.querySelector('#usageModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
+  const topModal = document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
   if (topModal) closeModal(topModal);
 });
 deleteForm.addEventListener('submit', event => {
