@@ -489,7 +489,7 @@ function createAwgService(env = process.env, dependencies = {}) {
       return {
         id: fingerprint,
         publicKeyFingerprint: fingerprint,
-        label: client?.label || `Существующий peer ${saved?.address || peer.allowedIps?.[0] || ''}`.trim(),
+        label: client?.label || peer.clientName || `Существующий peer ${saved?.address || peer.allowedIps?.[0] || ''}`.trim(),
         address: client?.address || saved?.address || peer.allowedIps?.[0] || '—',
         latestHandshakeAt: peer.latestHandshakeAt,
         transferRx: peer.transferRx || 0,

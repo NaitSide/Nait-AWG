@@ -29,7 +29,7 @@ async function fixture() {
     };
     if (req.url === '/awg/peers' && req.method === 'GET') {
       answer(200, { status: 'ok', peers: [
-        { publicKey: PUBLIC_KEY, allowedIps: state.runtime, state: state.peerState,
+        { publicKey: PUBLIC_KEY, clientName: 'Amnezia phone', allowedIps: state.runtime, state: state.peerState,
           latestHandshakeAt: state.latestHandshakeAt, transferRx: state.transferRx, transferTx: state.transferTx },
         ...(state.peer2 ? [{ publicKey: state.peer2, allowedIps: [ADDRESS] }] : [])
       ] });
@@ -137,5 +137,15 @@ test('display status separates confirmed access from handshake activity', async 
     await item.service.setPeerAccess(FINGERPRINT, true);
     item.state.peerState = 'inactive';
     assert.equal((await item.service.listPeers())[0].displayStatus, 'inactive');
+  } finally { await item.close(); }
+});
+
+test('existing peers use the client name supplied by Amnezia', async () => {
+  const item = await fixture();
+  try {
+    const peer = (await item.service.listPeers())[0];
+    assert.equal(peer.label, 'Amnezia phone');
+    assert.equal(peer.hasConfig, false);
+    assert.equal(peer.canDelete, false);
   } finally { await item.close(); }
 });

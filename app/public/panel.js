@@ -113,9 +113,13 @@ function selectRow(row) {
   const hasConfig = row.dataset.hasConfig === 'true';
   const canDelete = row.dataset.canDelete === 'true';
   qrButton.disabled = !hasConfig;
+  qrButton.title = hasConfig ? 'Показать QR-код' : 'Недоступно: исходный конфиг этого клиента не хранится на сервере';
   configButton.classList.toggle('is-disabled', !hasConfig);
   configButton.href = hasConfig ? row.dataset.configUrl : '';
+  configButton.title = hasConfig ? 'Скачать конфиг' : 'Недоступно: исходный конфиг этого клиента не хранится на сервере';
+  configButton.setAttribute('aria-disabled', String(!hasConfig));
   deleteButton.disabled = !canDelete;
+  deleteButton.title = canDelete ? 'Удалить peer' : 'Недоступно: клиент создан вне Nait-AWG';
   deleteForm.action = canDelete ? row.dataset.deleteUrl : '';
   selectionNote.textContent = 'Выбран: ' + row.dataset.label;
   history.replaceState(null, '', '/panel?selected=' + encodeURIComponent(row.dataset.peerId));

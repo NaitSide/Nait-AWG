@@ -8,6 +8,7 @@ const {
   getAwgProtocolVersion,
   getIpv4Network,
   parseAwgClientInterfaceParameters,
+  parseAmneziaClientNames,
   parseAllowedIps,
   parseInterfaceAddressFromIpJson,
   validateWireGuardPublicKey
@@ -81,6 +82,20 @@ test('parseAllowedIps accepts AWG space-separated and config comma-separated lis
   assert.deepEqual(parseAllowedIps('10.8.1.2/32 fd42:88:1::2/128'), ['10.8.1.2/32', 'fd42:88:1::2/128']);
   assert.deepEqual(parseAllowedIps('10.8.1.2/32, fd42:88:1::2/128'), ['10.8.1.2/32', 'fd42:88:1::2/128']);
   assert.deepEqual(parseAllowedIps('(none)'), []);
+});
+
+test('parseAmneziaClientNames reads current and legacy clientsTable formats safely', () => {
+  const currentKey = syntheticKey(2);
+  const legacyKey = syntheticKey(3);
+  assert.deepEqual([...parseAmneziaClientNames(JSON.stringify([
+    { clientId: currentKey, userData: { clientName: '  Helsinki\nVivoBook  ' } },
+    { clientId: 'not-a-key', userData: { clientName: 'Ignore me' } },
+    { clientId: syntheticKey(4), userData: { clientName: '   ' } }
+  ]))], [[currentKey, 'Helsinki VivoBook']]);
+  assert.deepEqual([...parseAmneziaClientNames(JSON.stringify({
+    [legacyKey]: { clientName: 'Телефон' }
+  }))], [[legacyKey, 'Телефон']]);
+  assert.deepEqual([...parseAmneziaClientNames('{')], []);
 });
 
 test('getConfigPeerSummaries reads the persistent config by its container path', async () => {

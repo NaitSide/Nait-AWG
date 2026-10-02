@@ -8,6 +8,7 @@ const { parseAwgPeerBlocks } = require('./awgConfigService');
 const DEFAULT_CONTAINER_NAME = 'amnezia-awg';
 const DEFAULT_INTERFACE = 'awg0';
 const DEFAULT_CONFIG_PATH = '/opt/amnezia/awg/awg0.conf';
+const DEFAULT_CLIENTS_TABLE_PATH = '/opt/amnezia/awg/clientsTable';
 const UNAVAILABLE_ERROR = 'Docker or AWG runtime unavailable';
 const ACTIVE_HANDSHAKE_WINDOW_SECONDS = 180;
 const UINT32_MAX = 4294967295;
@@ -69,7 +70,8 @@ function getAwgRuntimeConfig() {
   return {
     containerName: process.env.AWG_CONTAINER_NAME || DEFAULT_CONTAINER_NAME,
     interfaceName: process.env.AWG_INTERFACE || DEFAULT_INTERFACE,
-    configPath: process.env.AWG_CONFIG_PATH || DEFAULT_CONFIG_PATH
+    configPath: process.env.AWG_CONFIG_PATH || DEFAULT_CONFIG_PATH,
+    clientsTablePath: process.env.AWG_CLIENTS_TABLE_PATH || DEFAULT_CLIENTS_TABLE_PATH
   };
 }
 
@@ -178,6 +180,55 @@ async function getAwgConfigText(config) {
   }
 
   throw createProfileError('awg_config_not_found');
+}
+
+function cleanAmneziaClientName(value) {
+  if (typeof value !== 'string') return null;
+  const name = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return name ? name.slice(0, 80) : null;
+}
+
+function parseAmneziaClientNames(text) {
+  let source;
+  try {
+    source = JSON.parse(String(text || ''));
+  } catch {
+    return new Map();
+  }
+
+  const entries = Array.isArray(source)
+    ? source.map((client) => [client?.clientId, client?.userData?.clientName])
+    : source && typeof source === 'object'
+      ? Object.entries(source).map(([clientId, value]) => [clientId, value?.userData?.clientName ?? value?.clientName])
+      : [];
+  const names = new Map();
+  for (const [clientId, rawName] of entries) {
+    let publicKey;
+    try {
+      publicKey = validateWireGuardPublicKey(clientId);
+    } catch {
+      continue;
+    }
+    const name = cleanAmneziaClientName(rawName);
+    if (name) names.set(publicKey, name);
+  }
+  return names;
+}
+
+async function getAmneziaClientNames(config) {
+  try {
+    const { stdout } = await runFile('docker', [
+      'exec',
+      config.containerName,
+      'cat',
+      config.clientsTablePath
+    ], {
+      maxBuffer: 1024 * 1024
+    });
+    return parseAmneziaClientNames(stdout);
+  } catch {
+    return new Map();
+  }
 }
 
 async function getInterfaceAddressProfile(config) {
@@ -625,7 +676,8 @@ async function getAwgPeers() {
       latestHandshakesOutput,
       transferOutput,
       keepaliveOutput,
-      persistentConfigText
+      persistentConfigText,
+      clientNames
     ] = await Promise.all([
       getAwgField(config, 'peers'),
       getAwgField(config, 'allowed-ips'),
@@ -633,7 +685,8 @@ async function getAwgPeers() {
       getAwgField(config, 'latest-handshakes'),
       getAwgField(config, 'transfer'),
       getAwgField(config, 'persistent-keepalive'),
-      getAwgConfigText(config).catch(() => null)
+      getAwgConfigText(config).catch(() => null),
+      getAmneziaClientNames(config)
     ]);
 
     let peerPublicKeys = peersOutput === null ? [] : parsePeerList(peersOutput);
@@ -658,6 +711,7 @@ async function getAwgPeers() {
 
       return {
         publicKey,
+        clientName: clientNames.get(publicKey) || null,
         allowedIps: allowedIps.get(publicKey) || [],
         endpoint: endpoints.get(publicKey) || null,
         latestHandshakeAt,
@@ -690,6 +744,7 @@ module.exports = {
   getAwgStatus,
   getAwgProfile,
   buildPersistentPeerSummaries,
+  parseAmneziaClientNames,
   getAwgPeers,
   getIpv4Network,
   parseInterfaceAddressFromIpJson,
