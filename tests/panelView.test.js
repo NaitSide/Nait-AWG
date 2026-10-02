@@ -8,7 +8,7 @@ function render(telegram, note, overrides = {}) {
   return renderPanel({
     peers: [{ id: 'aabbccddeeff', publicKeyFingerprint: 'aabbccddeeff', label: 'Клиент',
       telegram, note, address: '10.8.1.2/32', state: 'inactive', transferRx: 0, transferTx: 0, ...overrides }],
-    profile: {}
+    profile: { panelIdentity: { appVersion: '0.1.0', serverHostname: 'az-hel-01', endpointHost: '217.144.186.141' } }
   });
 }
 
@@ -17,6 +17,13 @@ test('client subline shows Telegram and note instead of key fingerprint', () => 
   assert.match(html, /class="gate-client-contact" >@example<\/span>/);
   assert.match(html, /class="gate-note-icon"[^>]*data-note="Тестовая заметка"/);
   assert.doesNotMatch(html, /class="gate-client-contact"[^>]*>aabbccddeeff<\/span>/);
+});
+
+test('settings header identifies the panel version and current server', () => {
+  const html = render('', '');
+  assert.match(html, /Веб-интерфейс AmneziaWG Self-hosted/);
+  assert.match(html, /Nait-AWG · v0\.1\.0/);
+  assert.match(html, /az-hel-01 · 217\.144\.186\.141/);
 });
 
 test('client subline shows note alone when Telegram is empty', () => {

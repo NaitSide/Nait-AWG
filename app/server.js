@@ -5,8 +5,10 @@ require('dotenv').config();
 const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
+const os = require('os');
 const express = require('express');
 const path = require('path');
+const { version: appVersion } = require('../package.json');
 const { createHttpError, createAwgService } = require('./services/awgService');
 const { renderPanel: renderAwgPanel } = require('./views/panelView');
 
@@ -21,6 +23,8 @@ const sessionSecret = Buffer.from(String(process.env.NAIT_AWG_SESSION_SECRET || 
 const sessionTtlSeconds = Number(process.env.NAIT_AWG_SESSION_TTL_SECONDS || 12 * 60 * 60);
 const adminLogin = String(process.env.NAIT_AWG_ADMIN_LOGIN || 'admin').trim();
 const adminPassword = String(process.env.NAIT_AWG_ADMIN_PASSWORD || '');
+const serverHostname = os.hostname();
+const publicEndpointHost = String(process.env.PUBLIC_ENDPOINT_HOST || '').trim();
 const panelDataPath = String(process.env.NAIT_AWG_DATA_PATH || path.join(__dirname, '..', 'data', 'clients.db')).trim();
 const adminAuthPath = String(process.env.NAIT_AWG_AUTH_PATH || path.join(path.dirname(panelDataPath), 'admin-auth.json')).trim();
 const panelService = createAwgService();
@@ -300,7 +304,7 @@ app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { r
 app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
 app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
 app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });
-app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : req.query.restored ? 'Резервная копия успешно восстановлена.' : ''; res.type('html').send(renderAwgPanel({ peers, profile, selectedId, notice, adminLogin })); } catch (error) { sendError(res, error); } });
+app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : req.query.restored ? 'Резервная копия успешно восстановлена.' : ''; res.type('html').send(renderAwgPanel({ peers, profile: { ...profile, panelIdentity: { appVersion, serverHostname, endpointHost: publicEndpointHost } }, selectedId, notice, adminLogin })); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await panelService.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.redirect(303, '/panel'); } catch (error) { sendError(res, error); } });
 app.get('/', (req, res, next) => { if (isAuthenticated(req)) return res.redirect(303, '/panel'); return next(); });
