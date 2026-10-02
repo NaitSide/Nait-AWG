@@ -1020,10 +1020,10 @@ checkAwgReleaseButton.addEventListener('click', async () => {
     const releaseProtocol = /^v?(\d+\.\d+)/.exec(String(payload.tagName || ''))?.[1] || '';
     status.className = 'node-release-status success';
     if (currentProtocol && releaseProtocol === currentProtocol) {
-      status.textContent = `Версия протокола совпадает с последним релизом awg-tools: AWG ${currentProtocol}.`;
+      status.textContent = 'Версия AmneziaWG на текущем сервере совпадает с последним релизом awg-tools на GitHub.';
     } else if (currentProtocol && releaseProtocol) {
       status.className = 'node-release-status warning';
-      status.textContent = `На сервере AWG ${currentProtocol}, последний релиз awg-tools относится к AWG ${releaseProtocol}. Обновляйте контейнер через AmneziaVPN.`;
+      status.textContent = `На текущем сервере используется AWG ${currentProtocol}, а последний релиз awg-tools на GitHub — AWG ${releaseProtocol}. Дождитесь обновления Nait-AWG.`;
     } else {
       status.textContent = 'Последний официальный релиз найден. Сравнить версию протокола не удалось.';
     }

@@ -40,7 +40,7 @@ test('node status spans the settings column and exposes an on-demand official re
   assert.doesNotMatch(html, />Listen port /);
   assert.match(html, /href="https:\/\/github\.com\/amnezia-vpn\/amneziawg-tools"/);
   assert.match(html, /id="awgLatestRelease">Не проверялся/);
-  assert.match(html, /id="checkAwgRelease"[^>]*>Проверить обновления/);
+  assert.match(html, /id="checkAwgRelease"[^>]*>Сверить с GitHub/);
   assert.doesNotMatch(html, /Опубликован/);
 });
 
