@@ -22,11 +22,11 @@ function clone(value) {
   return value === null ? null : JSON.parse(JSON.stringify(value));
 }
 
-function createFixture(initialAllowedIps = [], actualNodeId = NODE_ID) {
+function createFixture(initialAllowedIps = [], actualNodeId = NODE_ID, interfaceAddress = '10.8.1.1/24') {
   const publicKey = syntheticKey(3);
   const otherKey = syntheticKey(4);
   const allowedLine = initialAllowedIps.length ? `AllowedIPs = ${initialAllowedIps.join(', ')}\n` : '';
-  let configText = `[Interface]\nPrivateKey = hidden\nAddress = 10.8.1.1/24\n\n[Peer]\n# NaitVPN clientId=device-one\nPublicKey = ${publicKey}\nPresharedKey = hidden-psk\n${allowedLine}PersistentKeepalive = 0\n\n[Peer]\nPublicKey = ${otherKey}\nPresharedKey = neighbour-psk\nAllowedIPs = 10.8.1.8/32\n`;
+  let configText = `[Interface]\nPrivateKey = hidden\nAddress = ${interfaceAddress}\n\n[Peer]\n# NaitVPN clientId=device-one\nPublicKey = ${publicKey}\nPresharedKey = hidden-psk\n${allowedLine}PersistentKeepalive = 0\n\n[Peer]\nPublicKey = ${otherKey}\nPresharedKey = neighbour-psk\nAllowedIPs = 10.8.1.8/32\n`;
   let runtimeAllowedIps = [...initialAllowedIps];
   let state = null;
   let failNextRuntimeSet = false;
@@ -89,7 +89,7 @@ function identity(fixture) {
   };
 }
 
-function operation(fixture, version, idByte = '1') {
+function operation(fixture, version, idByte = '1', allowedIp = ALLOWED_IP) {
   return {
     ...identity(fixture),
     operationId: `${idByte.repeat(8)}-${idByte.repeat(4)}-4${idByte.repeat(3)}-8${idByte.repeat(3)}-${idByte.repeat(12)}`,
@@ -97,7 +97,7 @@ function operation(fixture, version, idByte = '1') {
     planHash: PLAN_HASH,
     nodeIncarnation: NODE_INCARNATION,
     targetNodeId: NODE_ID,
-    targetAllowedIps: [ALLOWED_IP]
+    targetAllowedIps: [allowedIp]
   };
 }
 
@@ -209,6 +209,30 @@ test('fence, clear, set and retry preserve peer identity and enforce monotonic v
     fixture.service.setGate({ ...second, expectedAllowedIps: [], allowedIps: [ALLOWED_IP], grantDigest: GRANT_DIGEST }),
     (error) => error.code === 'stale_operation'
   );
+});
+
+test('official Amnezia first peer at network plus one can be disabled and restored', async () => {
+  const officialFirstPeer = '10.8.1.1/32';
+  const fixture = createFixture([officialFirstPeer], NODE_ID, '10.8.1.0/24');
+  const close = operation(fixture, 1, '1', officialFirstPeer);
+
+  await fixture.service.fenceGate(close);
+  await fixture.service.clearGate({ ...close, expectedAllowedIps: [officialFirstPeer], allowedIps: [] });
+  assert.deepEqual(fixture.runtimeAllowedIps, []);
+
+  const reopen = operation(fixture, 2, '2', officialFirstPeer);
+  await fixture.service.fenceGate(reopen);
+  await fixture.service.clearGate({ ...reopen, expectedAllowedIps: [], allowedIps: [] });
+  const opened = await fixture.service.setGate({
+    ...reopen,
+    expectedAllowedIps: [],
+    allowedIps: [officialFirstPeer],
+    grantDigest: GRANT_DIGEST
+  });
+
+  assert.equal(opened.snapshot.classification, 'OPEN');
+  assert.deepEqual(fixture.runtimeAllowedIps, [officialFirstPeer]);
+  assert.match(fixture.configText, /AllowedIPs = 10\.8\.1\.1\/32/);
 });
 
 test('same version cannot be rebound to another operation or plan', async () => {

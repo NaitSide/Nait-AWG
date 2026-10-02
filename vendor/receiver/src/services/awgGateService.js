@@ -99,7 +99,7 @@ function validateIpv4AllowedIp(value) {
   const mask = subnetPrefix === 0 ? 0 : (0xffffffff << (32 - subnetPrefix)) >>> 0;
   const network = (subnetIp & mask) >>> 0;
   const broadcast = (network | (~mask >>> 0)) >>> 0;
-  if (ip < network || ip > broadcast || ip === network || ip === broadcast || ip === ((network + 1) >>> 0)) {
+  if (ip < network || ip > broadcast || ip === network || ip === broadcast) {
     throw createError(400, 'invalid_allowed_ips', 'allowedIps must contain a usable IPv4 /32 inside AWG_VPN_SUBNET');
   }
   return `${address}/32`;

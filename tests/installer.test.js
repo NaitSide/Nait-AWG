@@ -29,6 +29,7 @@ test('update swaps application files without replacing persistent data', () => {
 test('browser login uses password-manager semantics and Enter submission', () => {
   assert.match(loginPage, /<form id="loginForm" action="\/login" method="post" autocomplete="on">/);
   assert.match(loginPage, /name="username"[^>]+autocomplete="username"/);
+  assert.doesNotMatch(loginPage, /name="username"[^>]+value="admin"/);
   assert.match(loginPage, /id="current-password" name="password"[^>]+autocomplete="current-password"/);
   assert.match(loginPage, /loginForm\.requestSubmit\(\)/);
   assert.match(loginPage, /login-validation-popover/);

@@ -110,8 +110,6 @@ function validateAllowedIp(value, vpnSubnet) {
   if (peer.ip < subnet.network || peer.ip > subnet.broadcast) return 'allowedIp must belong to AWG_VPN_SUBNET';
   if (peer.ip === subnet.network) return 'allowedIp must not be the network address';
   if (peer.ip === subnet.broadcast) return 'allowedIp must not be the broadcast address';
-  if (peer.ip === ((subnet.network + 1) >>> 0)) return 'allowedIp must not be the reserved server address';
-
   return null;
 }
 
