@@ -10,6 +10,7 @@ const express = require('express');
 const path = require('path');
 const { version: appVersion } = require('../package.json');
 const { createHttpError, createAwgService } = require('./services/awgService');
+const { getLatestAwgToolsRelease } = require('./services/releaseService');
 const { renderPanel: renderAwgPanel } = require('./views/panelView');
 
 const app = express();
@@ -264,6 +265,13 @@ app.patch('/api/admin/password', requireAuth, async (req, res) => {
   }
 });
 app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await panelService.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
+app.get('/api/awg/releases/latest', requireAuth, async (_req, res) => {
+  try { return res.json(await getLatestAwgToolsRelease()); }
+  catch (error) {
+    console.error('[nait-awg] awg_release_check_failed', error.message);
+    return res.status(502).json({ code: 'awg_release_check_failed', message: 'Не удалось проверить GitHub. Попробуйте позже.' });
+  }
+});
 app.post('/api/backup', requireAuth, async (req, res) => {
   const origin = req.get('origin');
   const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;

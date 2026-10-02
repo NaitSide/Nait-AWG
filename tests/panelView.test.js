@@ -22,8 +22,19 @@ test('client subline shows Telegram and note instead of key fingerprint', () => 
 test('settings header identifies the panel version and current server', () => {
   const html = render('', '');
   assert.match(html, /Веб-интерфейс AmneziaWG Self-hosted/);
+  assert.match(html, /class="settings-project-link" href="https:\/\/github\.com\/NaitSide\/Nait-AWG"/);
   assert.match(html, /Nait-AWG · v0\.1\.0/);
   assert.match(html, /az-hel-01 · 217\.144\.186\.141/);
+});
+
+test('node status spans the settings column and exposes an on-demand official release check', () => {
+  const html = render('', '');
+  assert.match(html, /class="card node-status-card"/);
+  assert.match(html, /Протокол на сервере/);
+  assert.match(html, /href="https:\/\/github\.com\/amnezia-vpn\/amneziawg-tools"/);
+  assert.match(html, /id="awgLatestRelease">Не проверялся/);
+  assert.match(html, /id="checkAwgRelease"[^>]*>Чекнуть последнюю версию/);
+  assert.match(html, /Версия протокола и релиз awg-tools — разные обозначения/);
 });
 
 test('client subline shows note alone when Telegram is empty', () => {

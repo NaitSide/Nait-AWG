@@ -6,7 +6,7 @@
   "main": "app/server.js",
   "scripts": {
     "start": "node app/server.js",
-    "check": "node --check app/server.js && node --check app/services/awgService.js && node --check app/services/backupService.js && node --check app/services/usageService.js && node --check app/views/panelView.js && node --check app/public/panel.js && node --test tests/*.test.js"
+    "check": "node --check app/server.js && node --check app/services/awgService.js && node --check app/services/backupService.js && node --check app/services/releaseService.js && node --check app/services/usageService.js && node --check app/views/panelView.js && node --check app/public/panel.js && node --test tests/*.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

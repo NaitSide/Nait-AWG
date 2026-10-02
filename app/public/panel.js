@@ -997,6 +997,40 @@ adminPasswordForm.addEventListener('submit', async event => {
   }
 });
 
+const checkAwgReleaseButton = document.getElementById('checkAwgRelease');
+checkAwgReleaseButton.addEventListener('click', async () => {
+  const latest = document.getElementById('awgLatestRelease');
+  const published = document.getElementById('awgReleaseDate');
+  const status = document.getElementById('awgReleaseStatus');
+  const originalLabel = checkAwgReleaseButton.textContent;
+  checkAwgReleaseButton.disabled = true;
+  checkAwgReleaseButton.textContent = 'Проверяем…';
+  status.className = 'node-release-status';
+  status.textContent = 'Запрашиваем данные официального GitHub…';
+  try {
+    const response = await fetch('/api/awg/releases/latest', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || 'Не удалось проверить GitHub.');
+    const link = document.createElement('a');
+    link.href = payload.releaseUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = payload.tagName || 'Открыть релиз';
+    latest.replaceChildren(link);
+    published.textContent = payload.publishedAt
+      ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(payload.publishedAt))
+      : 'Не указано';
+    status.className = 'node-release-status success';
+    status.textContent = 'Проверено. Это версия awg-tools, а не обозначение протокола AWG 3.1.';
+  } catch (error) {
+    status.className = 'node-release-status error';
+    status.textContent = error.message || 'Не удалось проверить GitHub.';
+  } finally {
+    checkAwgReleaseButton.disabled = false;
+    checkAwgReleaseButton.textContent = originalLabel;
+  }
+});
+
 document.querySelectorAll('.nav button[data-view]').forEach(button => button.addEventListener('click', () => {
   document.querySelectorAll('.nav button[data-view]').forEach(item => item.classList.toggle('active', item === button));
   document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === button.dataset.view + 'View'));
