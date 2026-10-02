@@ -4,11 +4,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { renderPanel } = require('../app/views/panelView');
 
-function render(telegram, note, overrides = {}) {
+function render(telegram, note, overrides = {}, profileOverrides = {}) {
   return renderPanel({
     peers: [{ id: 'aabbccddeeff', publicKeyFingerprint: 'aabbccddeeff', label: 'Клиент',
       telegram, note, address: '10.8.1.2/32', state: 'inactive', transferRx: 0, transferTx: 0, ...overrides }],
-    profile: { panelIdentity: { appVersion: '0.1.0', serverHostname: 'az-hel-01', endpointHost: '217.144.186.141' } }
+    profile: { status: 'ok', container: { running: true }, peersCount: 39, protocolVersion: '3.1', listenPort: 39428,
+      panelIdentity: { appVersion: '0.1.0', serverHostname: 'az-hel-01', endpointHost: '217.144.186.141' }, ...profileOverrides }
   });
 }
 
@@ -30,11 +31,43 @@ test('settings header identifies the panel version and current server', () => {
 test('node status spans the settings column and exposes an on-demand official release check', () => {
   const html = render('', '');
   assert.match(html, /class="card node-status-card"/);
-  assert.match(html, /Протокол на сервере/);
+  assert.match(html, /<h2>Статус<\/h2><p>39 клиентов<\/p>/);
+  assert.match(html, /Версия протокола <b>AmneziaWG 3\.1<\/b>/);
+  assert.match(html, /Endpoint <b>217\.144\.186\.141:39428<\/b>/);
+  assert.match(html, /Состояние AmneziaWG <b class="node-runtime-state ok">/);
+  assert.match(html, />Работает<\/b>/);
+  assert.doesNotMatch(html, />Interface /);
+  assert.doesNotMatch(html, />Listen port /);
   assert.match(html, /href="https:\/\/github\.com\/amnezia-vpn\/amneziawg-tools"/);
   assert.match(html, /id="awgLatestRelease">Не проверялся/);
-  assert.match(html, /id="checkAwgRelease"[^>]*>Чекнуть последнюю версию/);
-  assert.match(html, /Версия протокола и релиз awg-tools — разные обозначения/);
+  assert.match(html, /id="checkAwgRelease"[^>]*>Проверить обновления/);
+  assert.doesNotMatch(html, /Опубликован/);
+});
+
+test('node status explains what to check when the AWG container does not answer', () => {
+  const html = render('', '', {}, { status: 'unavailable', container: { running: false }, peersCount: null,
+    protocolVersion: '', listenPort: null });
+  assert.match(html, /Количество клиентов недоступно/);
+  assert.match(html, /AWG недоступен/);
+  assert.match(html, /Состояние AmneziaWG <b class="node-runtime-state error">/);
+  assert.match(html, />Не отвечает<\/b>/);
+  assert.match(html, /Проверьте, что Docker запущен, а контейнер AWG находится в состоянии Up/);
+});
+
+test('node status distinguishes a running container with an unreadable profile', () => {
+  const html = render('', '', {}, { status: 'error', container: { running: true }, protocolVersion: '' });
+  assert.match(html, />Ошибка конфигурации<\/b>/);
+  assert.match(html, /Контейнер запущен, но панель не смогла прочитать профиль AmneziaWG/);
+});
+
+test('node status explains Receiver and peer inventory failures separately', () => {
+  const receiverHtml = render('', '', {}, { status: 'unavailable', container: { running: false },
+    error: 'receiver_unavailable', protocolVersion: '' });
+  assert.match(receiverHtml, /контейнер Nait-AWG Receiver/);
+  const peersHtml = render('', '', {}, { status: 'error', container: { running: true },
+    error: 'awg_peer_inventory_unavailable' });
+  assert.match(peersHtml, />Ошибка чтения<\/b>/);
+  assert.match(peersHtml, /не смогла получить список клиентов/);
 });
 
 test('client subline shows note alone when Telegram is empty', () => {

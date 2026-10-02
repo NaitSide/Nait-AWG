@@ -1000,8 +1000,8 @@ adminPasswordForm.addEventListener('submit', async event => {
 const checkAwgReleaseButton = document.getElementById('checkAwgRelease');
 checkAwgReleaseButton.addEventListener('click', async () => {
   const latest = document.getElementById('awgLatestRelease');
-  const published = document.getElementById('awgReleaseDate');
   const status = document.getElementById('awgReleaseStatus');
+  const currentProtocol = document.querySelector('.node-status-card')?.dataset.protocolVersion || '';
   const originalLabel = checkAwgReleaseButton.textContent;
   checkAwgReleaseButton.disabled = true;
   checkAwgReleaseButton.textContent = 'Проверяем…';
@@ -1017,11 +1017,16 @@ checkAwgReleaseButton.addEventListener('click', async () => {
     link.rel = 'noopener noreferrer';
     link.textContent = payload.tagName || 'Открыть релиз';
     latest.replaceChildren(link);
-    published.textContent = payload.publishedAt
-      ? new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(payload.publishedAt))
-      : 'Не указано';
+    const releaseProtocol = /^v?(\d+\.\d+)/.exec(String(payload.tagName || ''))?.[1] || '';
     status.className = 'node-release-status success';
-    status.textContent = 'Проверено. Это версия awg-tools, а не обозначение протокола AWG 3.1.';
+    if (currentProtocol && releaseProtocol === currentProtocol) {
+      status.textContent = `Версия протокола совпадает с последним релизом awg-tools: AWG ${currentProtocol}.`;
+    } else if (currentProtocol && releaseProtocol) {
+      status.className = 'node-release-status warning';
+      status.textContent = `На сервере AWG ${currentProtocol}, последний релиз awg-tools относится к AWG ${releaseProtocol}. Обновляйте контейнер через AmneziaVPN.`;
+    } else {
+      status.textContent = 'Последний официальный релиз найден. Сравнить версию протокола не удалось.';
+    }
   } catch (error) {
     status.className = 'node-release-status error';
     status.textContent = error.message || 'Не удалось проверить GitHub.';

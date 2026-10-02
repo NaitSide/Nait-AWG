@@ -312,7 +312,32 @@ app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { r
 app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
 app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
 app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });
-app.get('/panel', requirePageAuth, async (req, res) => { try { const [peers, profile] = await Promise.all([panelService.listPeers(), panelService.receiver('/awg/profile')]); const selectedId = String(req.query.selected || ''); const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.` : req.query.restored ? 'Резервная копия успешно восстановлена.' : ''; res.type('html').send(renderAwgPanel({ peers, profile: { ...profile, panelIdentity: { appVersion, serverHostname, endpointHost: publicEndpointHost } }, selectedId, notice, adminLogin })); } catch (error) { sendError(res, error); } });
+app.get('/panel', requirePageAuth, async (req, res) => {
+  try {
+    let profile;
+    try {
+      profile = await panelService.receiver('/awg/profile');
+    } catch (error) {
+      console.error('[nait-awg] awg_profile_unavailable', error.message);
+      profile = { status: 'unavailable', container: { running: false }, peersCount: null,
+        listenPort: null, protocolVersion: '', error: 'receiver_unavailable' };
+    }
+    let peers = [];
+    if (profile.status === 'ok') {
+      try { peers = await panelService.listPeers(); }
+      catch (error) {
+        console.error('[nait-awg] awg_peer_inventory_unavailable', error.message);
+        profile = { ...profile, status: 'error', error: 'awg_peer_inventory_unavailable' };
+      }
+    }
+    const selectedId = String(req.query.selected || '');
+    const notice = req.query.created ? `Доступ «${String(req.query.created)}» создан. Выберите строку для QR или скачивания.`
+      : req.query.restored ? 'Резервная копия успешно восстановлена.' : '';
+    return res.type('html').send(renderAwgPanel({ peers,
+      profile: { ...profile, panelIdentity: { appVersion, serverHostname, endpointHost: publicEndpointHost } },
+      selectedId, notice, adminLogin }));
+  } catch (error) { return sendError(res, error); }
+});
 app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await panelService.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });
 app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.redirect(303, '/panel'); } catch (error) { sendError(res, error); } });
 app.get('/', (req, res, next) => { if (isAuthenticated(req)) return res.redirect(303, '/panel'); return next(); });
