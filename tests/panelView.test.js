@@ -99,6 +99,8 @@ test('backup card offers export and a guarded restore workflow', () => {
   assert.match(html, /id="restoreConfirm" type="checkbox"/);
   assert.match(html, /id="restoreObfuscation" type="checkbox"/);
   assert.match(html, /id="restoreProgress"/);
+  assert.match(html, /Endpoint из копии/);
+  assert.match(html, /Endpoint этого сервера/);
   assert.match(html, /текущие данные будут заменены/);
   assert.match(html, /panel\.js\?v=24/);
   assert.match(html, /panel\.css\?v=26/);
