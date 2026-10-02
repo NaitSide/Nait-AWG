@@ -997,42 +997,64 @@ adminPasswordForm.addEventListener('submit', async event => {
   }
 });
 
-const checkAwgReleaseButton = document.getElementById('checkAwgRelease');
-checkAwgReleaseButton.addEventListener('click', async () => {
-  const latest = document.getElementById('awgLatestRelease');
-  const status = document.getElementById('awgReleaseStatus');
-  const currentProtocol = document.querySelector('.node-status-card')?.dataset.protocolVersion || '';
-  const originalLabel = checkAwgReleaseButton.textContent;
-  checkAwgReleaseButton.disabled = true;
-  checkAwgReleaseButton.textContent = 'Проверяем…';
-  status.className = 'node-release-status';
-  status.textContent = 'Запрашиваем данные официального GitHub…';
+const checkVersionsButton = document.getElementById('checkVersions');
+checkVersionsButton.addEventListener('click', async () => {
+  const awgLatest = document.getElementById('awgLatestRelease');
+  const naitLatest = document.getElementById('naitLatestVersion');
+  const status = document.getElementById('versionCheckStatus');
+  const card = document.querySelector('.node-status-card');
+  const currentProtocol = card?.dataset.protocolVersion || '';
+  const currentAppVersion = card?.dataset.appVersion || '';
+  const originalLabel = checkVersionsButton.textContent;
+  checkVersionsButton.disabled = true;
+  checkVersionsButton.textContent = 'Проверяем…';
+  status.textContent = 'Запрашиваем версии на GitHub.';
   try {
-    const response = await fetch('/api/awg/releases/latest', { cache: 'no-store' });
+    const response = await fetch('/api/versions/latest', { cache: 'no-store' });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || 'Не удалось проверить GitHub.');
-    const link = document.createElement('a');
-    link.href = payload.releaseUrl;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = payload.tagName || 'Открыть релиз';
-    latest.replaceChildren(link);
-    const releaseProtocol = /^v?(\d+\.\d+)/.exec(String(payload.tagName || ''))?.[1] || '';
-    status.className = 'node-release-status success';
-    if (currentProtocol && releaseProtocol === currentProtocol) {
-      status.textContent = 'Версия AmneziaWG на текущем сервере совпадает с последним релизом awg-tools на GitHub.';
-    } else if (currentProtocol && releaseProtocol) {
-      status.className = 'node-release-status warning';
-      status.textContent = `На текущем сервере используется AWG ${currentProtocol}, а последний релиз awg-tools на GitHub — AWG ${releaseProtocol}. Дождитесь обновления Nait-AWG.`;
-    } else {
-      status.textContent = 'Последний официальный релиз найден. Сравнить версию протокола не удалось.';
-    }
+    const setGithubVersion = (element, text, url, matches, title) => {
+      element.className = `version-github ${matches ? 'match' : 'mismatch'}`;
+      if (!text || !url) {
+        element.className = 'version-github error';
+        element.textContent = 'Ошибка проверки';
+        return false;
+      }
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = `${text} ↗`;
+      if (title) link.title = title;
+      element.replaceChildren(link);
+      return true;
+    };
+    const releaseProtocol = /^v?(\d+\.\d+)/.exec(String(payload.awgTools?.tagName || ''))?.[1] || '';
+    const awgChecked = setGithubVersion(
+      awgLatest,
+      releaseProtocol ? `AWG ${releaseProtocol}` : '',
+      payload.awgTools?.releaseUrl,
+      Boolean(currentProtocol && releaseProtocol === currentProtocol),
+      payload.awgTools?.tagName ? `Релиз awg-tools ${payload.awgTools.tagName}` : ''
+    );
+    const githubAppVersion = String(payload.naitAwg?.version || '');
+    const naitChecked = setGithubVersion(
+      naitLatest,
+      githubAppVersion ? `v${githubAppVersion}` : '',
+      payload.naitAwg?.repositoryUrl,
+      Boolean(currentAppVersion && githubAppVersion === currentAppVersion),
+      'Nait-AWG на GitHub'
+    );
+    status.textContent = awgChecked && naitChecked ? 'Версии проверены.' : 'Часть версий проверить не удалось.';
   } catch (error) {
-    status.className = 'node-release-status error';
     status.textContent = error.message || 'Не удалось проверить GitHub.';
+    [awgLatest, naitLatest].forEach(element => {
+      element.className = 'version-github error';
+      element.textContent = 'Ошибка проверки';
+    });
   } finally {
-    checkAwgReleaseButton.disabled = false;
-    checkAwgReleaseButton.textContent = originalLabel;
+    checkVersionsButton.disabled = false;
+    checkVersionsButton.textContent = originalLabel;
   }
 });
 

@@ -4,8 +4,11 @@ const https = require('https');
 
 const API_URL = 'https://api.github.com/repos/amnezia-vpn/amneziawg-tools/releases/latest';
 const REPOSITORY_URL = 'https://github.com/amnezia-vpn/amneziawg-tools';
+const NAIT_PACKAGE_API_URL = 'https://api.github.com/repos/NaitSide/Nait-AWG/contents/package.json?ref=main';
+const NAIT_REPOSITORY_URL = 'https://github.com/NaitSide/Nait-AWG';
 const CACHE_TTL_MS = 10 * 60 * 1000;
-let cache = null;
+let awgToolsCache = null;
+let naitAwgCache = null;
 
 function requestJson(url, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
@@ -50,15 +53,60 @@ function normalizeRelease(payload) {
 
 async function getLatestAwgToolsRelease(options = {}) {
   const now = Number(options.now || Date.now());
-  if (cache && now - cache.checkedAt < CACHE_TTL_MS) return cache.release;
+  if (awgToolsCache && now - awgToolsCache.checkedAt < CACHE_TTL_MS) return awgToolsCache.release;
   const payload = await (options.request || requestJson)(API_URL);
   const release = normalizeRelease(payload);
-  cache = { checkedAt: now, release };
+  awgToolsCache = { checkedAt: now, release };
   return release;
 }
 
-function clearReleaseCache() {
-  cache = null;
+function normalizeNaitAwgVersion(payload) {
+  const sourceUrl = String(payload?.html_url || '').trim();
+  let packageJson;
+  try {
+    const content = Buffer.from(String(payload?.content || '').replace(/\s/g, ''), 'base64').toString('utf8');
+    packageJson = JSON.parse(content);
+  } catch {
+    throw new Error('Nait-AWG package payload is incomplete');
+  }
+  const name = String(packageJson?.name || '').trim();
+  const version = String(packageJson?.version || '').trim();
+  if (payload?.name !== 'package.json'
+    || sourceUrl !== 'https://github.com/NaitSide/Nait-AWG/blob/main/package.json'
+    || name !== 'nait-awg'
+    || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error('Nait-AWG package payload is incomplete');
+  }
+  return {
+    component: 'nait-awg',
+    version,
+    tagName: `v${version}`,
+    repositoryUrl: NAIT_REPOSITORY_URL
+  };
 }
 
-module.exports = { API_URL, REPOSITORY_URL, normalizeRelease, getLatestAwgToolsRelease, clearReleaseCache };
+async function getLatestNaitAwgVersion(options = {}) {
+  const now = Number(options.now || Date.now());
+  if (naitAwgCache && now - naitAwgCache.checkedAt < CACHE_TTL_MS) return naitAwgCache.version;
+  const payload = await (options.request || requestJson)(NAIT_PACKAGE_API_URL);
+  const version = normalizeNaitAwgVersion(payload);
+  naitAwgCache = { checkedAt: now, version };
+  return version;
+}
+
+function clearReleaseCache() {
+  awgToolsCache = null;
+  naitAwgCache = null;
+}
+
+module.exports = {
+  API_URL,
+  REPOSITORY_URL,
+  NAIT_PACKAGE_API_URL,
+  NAIT_REPOSITORY_URL,
+  normalizeRelease,
+  normalizeNaitAwgVersion,
+  getLatestAwgToolsRelease,
+  getLatestNaitAwgVersion,
+  clearReleaseCache
+};

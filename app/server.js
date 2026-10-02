@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 const { version: appVersion } = require('../package.json');
 const { createHttpError, createAwgService } = require('./services/awgService');
-const { getLatestAwgToolsRelease } = require('./services/releaseService');
+const { getLatestAwgToolsRelease, getLatestNaitAwgVersion } = require('./services/releaseService');
 const { renderPanel: renderAwgPanel } = require('./views/panelView');
 
 const app = express();
@@ -271,6 +271,22 @@ app.get('/api/awg/releases/latest', requireAuth, async (_req, res) => {
     console.error('[nait-awg] awg_release_check_failed', error.message);
     return res.status(502).json({ code: 'awg_release_check_failed', message: 'Не удалось проверить GitHub. Попробуйте позже.' });
   }
+});
+app.get('/api/versions/latest', requireAuth, async (_req, res) => {
+  const [awgToolsResult, naitAwgResult] = await Promise.allSettled([
+    getLatestAwgToolsRelease(),
+    getLatestNaitAwgVersion()
+  ]);
+  const payload = {
+    awgTools: awgToolsResult.status === 'fulfilled' ? awgToolsResult.value : null,
+    naitAwg: naitAwgResult.status === 'fulfilled' ? naitAwgResult.value : null
+  };
+  if (!payload.awgTools) console.error('[nait-awg] awg_release_check_failed', awgToolsResult.reason?.message || 'Unknown error');
+  if (!payload.naitAwg) console.error('[nait-awg] nait_awg_version_check_failed', naitAwgResult.reason?.message || 'Unknown error');
+  if (!payload.awgTools && !payload.naitAwg) {
+    return res.status(502).json({ code: 'version_check_failed', message: 'Не удалось проверить GitHub. Попробуйте позже.' });
+  }
+  return res.json(payload);
 });
 app.post('/api/backup', requireAuth, async (req, res) => {
   const origin = req.get('origin');

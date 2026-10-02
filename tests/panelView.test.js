@@ -34,13 +34,19 @@ test('node status spans the settings column and exposes an on-demand official re
   assert.match(html, /<h2>Статус<\/h2><p>39 клиентов<\/p>/);
   assert.match(html, /Версия протокола <b>AmneziaWG 3\.1<\/b>/);
   assert.match(html, /Endpoint <b>217\.144\.186\.141:39428<\/b>/);
-  assert.match(html, /Состояние AmneziaWG <b class="node-runtime-state ok">/);
+  assert.match(html, /Состояние AWG <b class="node-runtime-state ok">/);
+  assert.match(html, /<h3>Проверка версии<\/h3>/);
   assert.match(html, />Работает<\/b>/);
   assert.doesNotMatch(html, />Interface /);
   assert.doesNotMatch(html, />Listen port /);
-  assert.match(html, /href="https:\/\/github\.com\/amnezia-vpn\/amneziawg-tools"/);
-  assert.match(html, /id="awgLatestRelease">Не проверялся/);
-  assert.match(html, /id="checkAwgRelease"[^>]*>Сверить с GitHub/);
+  assert.match(html, /На этом сервере/);
+  assert.match(html, /На GitHub/);
+  assert.match(html, /<strong role="rowheader">awg-tools<\/strong><span role="cell">AWG 3\.1<\/span>/);
+  assert.match(html, /<strong role="rowheader">Nait-AWG<\/strong><span role="cell">v0\.1\.0<\/span>/);
+  assert.match(html, /id="awgLatestRelease"[^>]*>Не проверено/);
+  assert.match(html, /id="naitLatestVersion"[^>]*>Не проверено/);
+  assert.match(html, /id="checkVersions"[^>]*>Проверить/);
+  assert.doesNotMatch(html, /awg-tools на GitHub/);
   assert.doesNotMatch(html, /Опубликован/);
 });
 
@@ -49,7 +55,7 @@ test('node status explains what to check when the AWG container does not answer'
     protocolVersion: '', listenPort: null });
   assert.match(html, /Количество клиентов недоступно/);
   assert.match(html, /AWG недоступен/);
-  assert.match(html, /Состояние AmneziaWG <b class="node-runtime-state error">/);
+  assert.match(html, /Состояние AWG <b class="node-runtime-state error">/);
   assert.match(html, />Не отвечает<\/b>/);
   assert.match(html, /Проверьте, что Docker запущен, а контейнер AWG находится в состоянии Up/);
 });
