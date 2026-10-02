@@ -1008,6 +1008,8 @@ checkVersionsButton.addEventListener('click', async () => {
   const originalLabel = checkVersionsButton.textContent;
   checkVersionsButton.disabled = true;
   checkVersionsButton.textContent = 'Проверяем…';
+  status.hidden = true;
+  status.className = 'version-check-summary';
   status.textContent = 'Запрашиваем версии на GitHub.';
   try {
     const response = await fetch('/api/versions/latest', { cache: 'no-store' });
@@ -1045,8 +1047,42 @@ checkVersionsButton.addEventListener('click', async () => {
       Boolean(currentAppVersion && githubAppVersion === currentAppVersion),
       'Nait-AWG на GitHub'
     );
-    status.textContent = awgChecked && naitChecked ? 'Версии проверены.' : 'Часть версий проверить не удалось.';
+    const compareVersions = (current, latest) => {
+      const currentParts = String(current).split(/[.+-]/).map(Number);
+      const latestParts = String(latest).split(/[.+-]/).map(Number);
+      if (!current || !latest || currentParts.some(Number.isNaN) || latestParts.some(Number.isNaN)) return null;
+      const length = Math.max(currentParts.length, latestParts.length);
+      for (let index = 0; index < length; index += 1) {
+        const difference = (currentParts[index] || 0) - (latestParts[index] || 0);
+        if (difference !== 0) return Math.sign(difference);
+      }
+      return 0;
+    };
+    const awgComparison = compareVersions(currentProtocol, releaseProtocol);
+    const naitComparison = compareVersions(currentAppVersion, githubAppVersion);
+    status.hidden = false;
+    if (!awgChecked || !naitChecked || awgComparison === null || naitComparison === null) {
+      status.className = 'version-check-summary warning';
+      status.textContent = 'Не всё удалось проверить';
+    } else if (awgComparison === 0 && naitComparison === 0) {
+      status.className = 'version-check-summary success';
+      status.textContent = 'Версии совпадают';
+    } else if (awgComparison < 0 && naitComparison < 0) {
+      status.className = 'version-check-summary warning';
+      status.textContent = 'Обновите AWG и Nait-AWG';
+    } else if (awgComparison < 0) {
+      status.className = 'version-check-summary warning';
+      status.textContent = 'Обновите AWG';
+    } else if (naitComparison < 0) {
+      status.className = 'version-check-summary warning';
+      status.textContent = 'Обновите Nait-AWG';
+    } else {
+      status.className = 'version-check-summary warning';
+      status.textContent = 'На сервере установлена более новая версия';
+    }
   } catch (error) {
+    status.hidden = false;
+    status.className = 'version-check-summary error';
     status.textContent = error.message || 'Не удалось проверить GitHub.';
     [awgLatest, naitLatest].forEach(element => {
       element.className = 'version-github error';

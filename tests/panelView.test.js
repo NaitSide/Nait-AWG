@@ -35,7 +35,7 @@ test('node status spans the settings column and exposes an on-demand official re
   assert.match(html, /Версия протокола <b>AmneziaWG 3\.1<\/b>/);
   assert.match(html, /Endpoint <b>217\.144\.186\.141:39428<\/b>/);
   assert.match(html, /Состояние AWG <b class="node-runtime-state ok">/);
-  assert.match(html, /<h3>Проверка версии<\/h3>/);
+  assert.match(html, /<h3>Проверка версий<\/h3>/);
   assert.match(html, />Работает<\/b>/);
   assert.doesNotMatch(html, />Interface /);
   assert.doesNotMatch(html, />Listen port /);
@@ -46,6 +46,7 @@ test('node status spans the settings column and exposes an on-demand official re
   assert.match(html, /id="awgLatestRelease"[^>]*>Не проверено/);
   assert.match(html, /id="naitLatestVersion"[^>]*>Не проверено/);
   assert.match(html, /id="checkVersions"[^>]*>Проверить/);
+  assert.match(html, /id="versionCheckStatus"[^>]*hidden/);
   assert.doesNotMatch(html, /awg-tools на GitHub/);
   assert.doesNotMatch(html, /Опубликован/);
 });
