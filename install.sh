@@ -4,26 +4,28 @@
 # This script never starts, stops, restarts, creates or replaces the AWG container.
 set -Eeuo pipefail
 
-if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit ]]; then
-  [[ $# -eq 0 ]] || { printf 'Использование: sudo bash install.sh [audit|install|update]\n' >&2; exit 2; }
+if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit && "${1:-}" != reset-auth ]]; then
+  [[ $# -eq 0 ]] || { printf 'Использование: sudo bash install.sh [audit|install|update|reset-auth]\n' >&2; exit 2; }
   [[ "${EUID}" -eq 0 ]] || { printf 'Запустите через sudo.\n' >&2; exit 1; }
   command -v curl >/dev/null 2>&1 || { printf 'Нужен curl.\n' >&2; exit 1; }
   command -v tar >/dev/null 2>&1 || { printf 'Нужен tar.\n' >&2; exit 1; }
 
   requested_action="${NAIT_AWG_ACTION:-}"
   if [[ -z "$requested_action" ]]; then
-    [[ -r /dev/tty ]] || { printf 'Интерактивное меню недоступно. Укажите NAIT_AWG_ACTION=install или NAIT_AWG_ACTION=update.\n' >&2; exit 1; }
+    [[ -r /dev/tty ]] || { printf 'Интерактивное меню недоступно. Укажите NAIT_AWG_ACTION=install, update или reset-auth.\n' >&2; exit 1; }
     printf '\nВыберите действие:\n' >&2
     printf '  1) Установить только веб-панель Nait-AWG\n' >&2
     printf '  2) Установить AmneziaWG 3.1 + веб-панель Nait-AWG — (в разработке)\n' >&2
-    printf '  3) Обновить веб-интерфейс Nait-AWG\n\n' >&2
-    read -r -p 'Введите номер [1-3]: ' requested_action </dev/tty
+    printf '  3) Обновить веб-интерфейс Nait-AWG\n' >&2
+    printf '  4) Сбросить логин и пароль\n\n' >&2
+    read -r -p 'Введите номер [1-4]: ' requested_action </dev/tty
   fi
   case "$requested_action" in
     1|install) requested_action=install ;;
     2|full) printf 'Этот режим пока находится в разработке. Сервер не изменён.\n' >&2; exit 0 ;;
     3|update) requested_action=update ;;
-    *) printf 'Неизвестный вариант. Выберите 1, 2 или 3.\n' >&2; exit 2 ;;
+    4|reset-auth) requested_action=reset-auth ;;
+    *) printf 'Неизвестный вариант. Выберите 1, 2, 3 или 4.\n' >&2; exit 2 ;;
   esac
 
   if [[ "$requested_action" == install && ( -e /opt/naitlab/nait_awg || -e /etc/systemd/system/nait-awg-selfhost.service ) ]]; then
@@ -32,6 +34,10 @@ if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit ]]; then
   fi
   if [[ "$requested_action" == update && ! -d /opt/naitlab/nait_awg ]]; then
     printf 'Установка Nait-AWG не найдена. Сначала выберите пункт 1.\n' >&2
+    exit 1
+  fi
+  if [[ "$requested_action" == reset-auth && ( ! -f /opt/naitlab/nait_awg/.env || ! -f /etc/systemd/system/nait-awg-selfhost.service ) ]]; then
+    printf 'Установленная веб-панель Nait-AWG не найдена. Сброс отменён.\n' >&2
     exit 1
   fi
 
@@ -48,6 +54,8 @@ if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit ]]; then
 
   if [[ "$requested_action" == update ]]; then
     printf 'Загружаем обновление Nait-AWG с GitHub...\n' >&2
+  elif [[ "$requested_action" == reset-auth ]]; then
+    printf 'Загружаем инструмент сброса доступа Nait-AWG...\n' >&2
   else
     printf 'Загружаем Nait-AWG с GitHub...\n' >&2
   fi
@@ -56,11 +64,11 @@ if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit ]]; then
     -o "$download_stage/source.tar.gz"
   tar -xzf "$download_stage/source.tar.gz" -C "$download_stage"
   source_dir="$download_stage/Nait-AWG-main"
-  [[ -f "$source_dir/install.sh" && -f "$source_dir/scripts/selfhost-preflight.js" ]] || {
+  [[ -f "$source_dir/install.sh" && -f "$source_dir/scripts/selfhost-preflight.js" && -f "$source_dir/scripts/admin-credentials.js" ]] || {
     printf 'Архив проекта неполный. Установка отменена.\n' >&2
     exit 1
   }
-  printf 'Проверяем совместимость сервера с AmneziaWG...\n' >&2
+  if [[ "$requested_action" != reset-auth ]]; then printf 'Проверяем совместимость сервера с AmneziaWG...\n' >&2; fi
   bash "$source_dir/install.sh" "$requested_action"
   exit 0
 fi
@@ -76,9 +84,29 @@ update_backup=''
 update_active=false
 update_committed=false
 update_items=()
+reset_backup=''
+reset_auth_path=''
+reset_had_auth=false
+reset_snapshot_ready=false
+reset_stopped=false
+reset_committed=false
 
 fail() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*" >&2; }
+rollback_reset() {
+  [[ "$reset_stopped" == true && "$reset_committed" != true ]] || return 0
+  note 'Сброс не завершился. Возвращаем прежние реквизиты панели...'
+  if [[ "$reset_snapshot_ready" == true ]]; then
+    mv -f -- "$reset_backup/panel.env" "$INSTALL_DIR/.env" || return 1
+    if [[ "$reset_had_auth" == true ]]; then
+      mv -f -- "$reset_backup/admin-auth" "$reset_auth_path" || return 1
+    else
+      rm -f -- "$reset_auth_path" || return 1
+    fi
+  fi
+  systemctl restart "$PANEL_UNIT" || return 1
+  reset_stopped=false
+}
 rollback_update() {
   [[ "$update_active" == true && "$update_committed" != true ]] || return 0
   set +e
@@ -98,6 +126,12 @@ rollback_update() {
   note "Предыдущая версия возвращена. Диагностические файлы сохранены: $update_backup"
 }
 cleanup() {
+  if ! rollback_reset; then
+    note 'Не удалось вернуть прежние реквизиты. Веб-панель оставлена остановленной; проверьте службу и временную копию.'
+    systemctl stop "$PANEL_UNIT" || true
+  elif [[ "$reset_backup" == "$INSTALL_DIR"/.auth-reset.* && -d "$reset_backup" ]]; then
+    rm -rf -- "$reset_backup"
+  fi
   rollback_update
   if [[ "$stage" == /tmp/nait-awg.* && -d "$stage" ]]; then rm -rf -- "$stage"; fi
 }
@@ -105,6 +139,42 @@ trap cleanup EXIT
 
 [[ "${EUID}" -eq 0 ]] || fail 'Run via sudo/root.'
 [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || fail 'Only Linux x86_64 is supported.'
+if [[ "${1:-}" == reset-auth ]]; then
+  [[ -f "$INSTALL_DIR/.env" && -f "$INSTALL_DIR/app/server.js" && -x "$INSTALL_DIR/runtime/bin/node" && -f "/etc/systemd/system/$PANEL_UNIT" ]] || fail 'Установленная веб-панель Nait-AWG не найдена или повреждена. Сброс отменён.'
+  command -v systemctl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || fail 'Для сброса нужны systemctl и curl.'
+  [[ -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Инструмент сброса доступа отсутствует в исходниках.'
+  node="$INSTALL_DIR/runtime/bin/node"
+  reset_info="$("$node" "$SOURCE_DIR/scripts/admin-credentials.js" inspect "$INSTALL_DIR")" || fail 'Не удалось проверить файлы авторизации. Ничего не изменено.'
+  IFS=$'\t' read -r public_endpoint panel_port reset_auth_path <<< "$reset_info"
+  note 'Сбрасываем доступ к панели. VPN и клиентов не трогаем...'
+  reset_stopped=true
+  systemctl stop "$PANEL_UNIT"
+  reset_backup="$(mktemp -d "$INSTALL_DIR/.auth-reset.XXXXXX")"
+  cp -a -- "$INSTALL_DIR/.env" "$reset_backup/panel.env"
+  if [[ -f "$reset_auth_path" ]]; then
+    cp -a -- "$reset_auth_path" "$reset_backup/admin-auth"
+    reset_had_auth=true
+  fi
+  reset_snapshot_ready=true
+  admin_password="$("$node" "$SOURCE_DIR/scripts/admin-credentials.js" reset "$INSTALL_DIR")" || fail 'Не удалось сбросить реквизиты.'
+  systemctl restart "$PANEL_UNIT"
+  panel_ready=false
+  for attempt in {1..20}; do
+    if curl --insecure --fail --silent --max-time 2 "https://127.0.0.1:$panel_port/health" >/dev/null; then
+      panel_ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "$panel_ready" == true ]] || fail "Панель не запустилась после сброса. Проверьте: sudo systemctl status $PANEL_UNIT"
+  reset_committed=true
+  note "Доступ сброшен: https://$public_endpoint:$panel_port/"
+  note 'Логин: admin'
+  note "Пароль: $admin_password"
+  note '(Сохраните пароль и не забудьте сменить его в настройках.)'
+  note 'Старые сеансы входа завершены. VPN, клиенты, порт и настройки сохранены.'
+  exit 0
+fi
 [[ -r /etc/os-release ]] || fail 'Cannot identify the operating system.'
 # shellcheck disable=SC1091
 . /etc/os-release
@@ -112,7 +182,7 @@ trap cleanup EXIT
 for command_name in docker curl openssl tar xz sha256sum systemctl ss getent useradd groupadd usermod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Missing command: $command_name"
 done
-[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
 
 if [[ "${1:-}" == install ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "Nait-AWG уже установлен: $INSTALL_DIR. Повторная установка остановлена; файлы не изменены."
@@ -122,7 +192,7 @@ elif [[ "${1:-}" == update ]]; then
   [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" && -f "$INSTALL_DIR/receiver/.env" ]] || fail 'Рабочая установка Nait-AWG не найдена или повреждена. Обновление остановлено.'
   [[ -f "/etc/systemd/system/$PANEL_UNIT" && -f "/etc/systemd/system/$RECEIVER_UNIT" ]] || fail 'Службы Nait-AWG не найдены. Обновление остановлено.'
 elif [[ "${1:-}" != audit ]]; then
-  printf 'Использование: sudo bash install.sh [audit|install|update]\n' >&2
+  printf 'Использование: sudo bash install.sh [audit|install|update|reset-auth]\n' >&2
   exit 2
 fi
 
@@ -146,6 +216,15 @@ note 'Ищем контейнер AmneziaWG и проверяем его нас�
 IFS=$'\t' read -r awg_container awg_subnet awg_started_at < <("$node" "$SOURCE_DIR/scripts/selfhost-preflight.js" --machine)
 [[ "$awg_container" =~ ^amnezia-awg2?$ && "$awg_subnet" =~ ^[0-9./]+$ && "$awg_started_at" =~ ^[0-9TZ:.-]+$ ]] || fail 'Invalid preflight result.'
 note "AmneziaWG 3.1 найден: $awg_container, $awg_subnet. Работающий VPN не трогаем."
+if [[ "$awg_container" == amnezia-awg2 ]]; then
+  note ''
+  note '============================================================'
+  note 'Разработчики Amnezia сохранили имя контейнера amnezia-awg2'
+  note 'при переходе на AmneziaWG 3.1.'
+  note 'Цифра 2 в имени не означает версию протокола.'
+  note '============================================================'
+  note ''
+fi
 if [[ "${1:-}" == audit ]]; then exit 0; fi
 
 if [[ "${1:-}" == update ]]; then
@@ -256,21 +335,7 @@ panel_port=$((10#$panel_port))
 (( panel_port >= 1024 && panel_port <= 65535 )) || fail 'Порт панели должен быть числом от 1024 до 65535.'
 [[ "$panel_port" != 42842 ]] || fail 'Порт 42842 зарезервирован для внутреннего сервиса.'
 [[ -z "$(ss -H -ltn "( sport = :$panel_port )")" ]] || fail "TCP-порт $panel_port уже занят. Запустите установку заново и выберите другой."
-admin_password="${NAIT_AWG_ADMIN_PASSWORD:-}"
-if [[ -z "$admin_password" && -r /dev/tty ]]; then
-  read -r -s -p 'Пароль администратора (от 12 символов: заглавная и строчная буквы, цифра и спецсимвол): ' admin_password </dev/tty
-  printf '\n' >&2
-  read -r -s -p 'Повторите пароль: ' admin_password_repeat </dev/tty
-  printf '\n' >&2
-  [[ "$admin_password" == "$admin_password_repeat" ]] || fail 'Пароли не совпадают. Запустите установку заново.'
-fi
-password_error='Пароль слишком простой. Используйте от 12 до 256 символов: минимум одну заглавную и одну строчную латинскую букву, одну цифру и один специальный символ @#%^*_.!+-.'
-[[ "${#admin_password}" -ge 12 && "${#admin_password}" -le 256 ]] || fail "$password_error"
-[[ "$admin_password" =~ ^[a-zA-Z0-9@#%^*_.!+-]+$ ]] || fail "$password_error"
-[[ "$admin_password" =~ [a-z] ]] || fail "$password_error"
-[[ "$admin_password" =~ [A-Z] ]] || fail "$password_error"
-[[ "$admin_password" =~ [0-9] ]] || fail "$password_error"
-[[ "$admin_password" =~ [-@#%^*_.!+] ]] || fail "$password_error"
+admin_password="$("$node" "$SOURCE_DIR/scripts/admin-credentials.js" generate)" || fail 'Не удалось сгенерировать пароль администратора.'
 
 # Recheck before writing; a running VPN is not sufficient if its config/profile is stale.
 "$node" "$SOURCE_DIR/scripts/selfhost-preflight.js" >/dev/null
@@ -392,4 +457,6 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; the
 fi
 note "Готово: https://$public_endpoint:$panel_port/ (самоподписанный сертификат)."
 note 'Логин панели: admin'
+note "Пароль: $admin_password"
+note '(Сохраните пароль и не забудьте сменить его в настройках.)'
 note 'VPN не перезапускали. Если панель недоступна, проверьте сетевой экран хостинга.'

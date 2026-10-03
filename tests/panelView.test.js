@@ -144,6 +144,7 @@ test('status badge opens a traffic modal without changing grey status colors', (
 test('backup card offers export and a guarded restore workflow', () => {
   const html = render('', '');
   assert.match(html, /Резервная копия пользователей и настроек/);
+  assert.doesNotMatch(html, /импорт \/ экспорт/);
   assert.match(html, /id="openBackup"/);
   assert.match(html, /id="backupModal" aria-hidden="true"/);
   assert.match(html, /id="backupEncrypt" type="checkbox"/);
