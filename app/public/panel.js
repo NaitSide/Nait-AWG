@@ -12,7 +12,6 @@ const powerButton = document.getElementById('toggleAccess');
 const deleteForm = document.getElementById('deleteForm');
 const deleteButton = document.getElementById('deletePeer');
 const selectionNote = document.getElementById('selectionNote');
-const clientConfigHelp = document.getElementById('clientConfigHelp');
 let filter = 'all';
 let pageSize = 10;
 let page = 1;
@@ -112,7 +111,6 @@ function selectRow(row) {
   });
   selectedRow = row;
   const hasConfig = row.dataset.hasConfig === 'true';
-  clientConfigHelp.hidden = hasConfig;
   const canDelete = row.dataset.canDelete === 'true';
   qrButton.disabled = !hasConfig;
   qrButton.title = hasConfig ? 'Показать QR-код' : 'Недоступно: исходный конфиг этого клиента не хранится на сервере';
@@ -142,7 +140,6 @@ function resetSelection() {
   deleteButton.disabled = true;
   deleteForm.removeAttribute('action');
   selectionNote.textContent = '';
-  clientConfigHelp.hidden = true;
   history.replaceState(null, '', '/panel');
 }
 
@@ -229,7 +226,7 @@ function renderGatePagination(totalItems) {
 
 allRows.forEach(row => {
   row.addEventListener('click', event => {
-    if (event.target.closest('.avatar-edit-btn, .gate-note-icon, .gate-status-button')) return;
+    if (event.target.closest('.avatar-edit-btn, .gate-note-icon, .gate-status-button, .gate-config-info')) return;
     selectRow(row);
   });
   row.addEventListener('keydown', event => {
@@ -246,6 +243,13 @@ allRows.forEach(row => {
     event.stopPropagation();
     selectRow(row);
     openUsage(row);
+  });
+  row.querySelector('.gate-config-info')?.addEventListener('click', event => {
+    event.stopPropagation();
+    selectRow(row);
+    clientConfigRow = row;
+    document.getElementById('clientConfigName').textContent = row.dataset.label;
+    showModal('clientConfigModal');
   });
 });
 function notePreview(note) {
@@ -367,7 +371,6 @@ let createBusy = false;
 let createdPeer = null;
 let editBusy = false;
 let editingRow = null;
-let clientConfigBusy = false;
 let clientConfigRow = null;
 let accessBusy = false;
 let backupBusy = false;
@@ -388,17 +391,12 @@ function closeModal(modal) {
   if (modal.id === 'createModal' && createBusy) return;
   if (modal.id === 'createModal' && createdPeer) return finishCreate();
   if (modal.id === 'editModal' && editBusy) return;
-  if (modal.id === 'clientConfigModal' && clientConfigBusy) return;
   if (modal.id === 'accessModal' && accessBusy) return;
   if (modal.id === 'backupModal' && backupBusy) return;
   if (modal.id === 'restoreModal' && restoreBusy) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
-  if (modal.id === 'clientConfigModal') {
-    document.getElementById('clientConfigForm').reset();
-    document.getElementById('clientConfigError').hidden = true;
-    clientConfigRow = null;
-  }
+  if (modal.id === 'clientConfigModal') clientConfigRow = null;
   if (modal.id === 'backupModal') {
     document.getElementById('backupForm').reset();
     document.getElementById('backupError').hidden = true;
@@ -415,54 +413,10 @@ function closeModal(modal) {
   }
   if (modal.id === 'usageModal') usageRequestId++;
 }
-document.getElementById('openClientConfig').addEventListener('click', () => {
-  if (!selectedRow || selectedRow.dataset.hasConfig === 'true') return;
-  clientConfigRow = selectedRow;
-  document.getElementById('clientConfigName').textContent = clientConfigRow.dataset.label;
-  showModal('clientConfigModal');
-  document.getElementById('clientConfigFile').focus();
-});
-document.getElementById('clientConfigFile').addEventListener('change', event => {
-  if (event.target.files?.length) document.getElementById('clientConfigText').value = '';
-});
-document.getElementById('clientConfigText').addEventListener('input', event => {
-  if (event.target.value) document.getElementById('clientConfigFile').value = '';
-});
-document.getElementById('clientConfigForm').addEventListener('submit', async event => {
-  event.preventDefault();
-  if (clientConfigBusy || !clientConfigRow) return;
-  const error = document.getElementById('clientConfigError');
-  const submit = document.getElementById('clientConfigSubmit');
-  const fileInput = document.getElementById('clientConfigFile');
-  const textInput = document.getElementById('clientConfigText');
+document.getElementById('missingConfigTraffic').addEventListener('click', () => {
   const row = clientConfigRow;
-  clientConfigBusy = true;
-  submit.disabled = fileInput.disabled = textInput.disabled = true;
-  submit.textContent = 'Проверяем…';
-  error.hidden = true;
-  try {
-    const file = fileInput.files?.[0];
-    if (file && file.size > 64 * 1024) throw new Error('Выберите конфиг одного клиента размером до 64 КБ.');
-    const config = file ? await file.text() : textInput.value.trim();
-    if (!config) throw new Error('Выберите файл или вставьте текст подключения.');
-    const response = await fetch('/api/peers/' + encodeURIComponent(row.dataset.peerId) + '/config/import', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-      body: JSON.stringify({ config })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.message || 'Не удалось сохранить конфиг.');
-    row.dataset.hasConfig = 'true';
-    if (selectedRow === row) selectRow(row);
-    clientConfigBusy = false;
-    closeModal(document.getElementById('clientConfigModal'));
-  } catch (failure) {
-    error.textContent = failure.message || 'Не удалось сохранить конфиг.';
-    error.hidden = false;
-  } finally {
-    clientConfigBusy = false;
-    submit.disabled = fileInput.disabled = textInput.disabled = false;
-    submit.textContent = 'Проверить и сохранить';
-  }
+  closeModal(document.getElementById('clientConfigModal'));
+  if (row) openUsage(row);
 });
 
 function renderUsageMonths(usage) {
@@ -876,7 +830,7 @@ document.querySelectorAll('[data-close-modal]').forEach(button => button.addEven
 document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) closeModal(modal); }));
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
-  const topModal = document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
+  const topModal = document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
   if (topModal) closeModal(topModal);
 });
 deleteForm.addEventListener('submit', event => {
