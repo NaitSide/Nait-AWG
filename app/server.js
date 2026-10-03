@@ -53,8 +53,19 @@ let adminAuthState = loadAdminAuthState();
 app.disable('x-powered-by');
 const standardJsonParser = express.json({ limit: '32kb' });
 const restoreJsonParser = express.json({ limit: '40mb' });
+const clientConfigJsonParser = express.json({ limit: '512kb' });
+function parseClientConfigJson(req, res, next) {
+  clientConfigJsonParser(req, res, error => {
+    if (!error) return next();
+    // Do not log or echo malformed JSON containing client private keys.
+    const tooLarge = error.type === 'entity.too.large';
+    return res.status(tooLarge ? 413 : 400).json({ code: tooLarge ? 'client_config_too_large' : 'invalid_client_config_json',
+      message: tooLarge ? 'Файл подключения слишком большой.' : 'Некорректный формат запроса загрузки конфига.' });
+  });
+}
 app.use((req, res, next) => {
   if (req.path === '/api/restore/inspect' || req.path === '/api/restore') return next();
+  if (req.method === 'POST' && /^\/api\/peers\/[^/]+\/config\/import$/.test(req.path)) return next();
   return standardJsonParser(req, res, next);
 });
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
@@ -325,6 +336,14 @@ app.get('/api/peers/:fingerprint/usage', requireAuth, async (req, res) => { try 
 app.post('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await panelService.setPeerAccess(req.params.fingerprint, req.body?.enabled)); } catch (error) { sendError(res, error); } });
 app.get('/api/peers/:fingerprint/config', requireAuth, async (req, res) => { try { const { client, config } = await panelService.getConfig(req.params.fingerprint); res.type('text/plain').attachment(`${client.receiverLabel}.conf`).send(config); } catch (error) { sendError(res, error); } });
 app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { res.type('image/svg+xml').send(await panelService.getQr(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
+app.post('/api/peers/:fingerprint/config/import', requireAuth, parseClientConfigJson, async (req, res) => {
+  const origin = req.get('origin');
+  if (origin && origin !== `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`) {
+    return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
+  }
+  try { res.json(await panelService.importClientConfig(req.params.fingerprint, req.body)); }
+  catch (error) { sendError(res, error); }
+});
 app.put('/api/peers/:fingerprint/note', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerNote(req.params.fingerprint, req.body?.note)); } catch (error) { sendError(res, error); } });
 app.put('/api/peers/:fingerprint/metadata', requireAuth, async (req, res) => { try { res.json(await panelService.updatePeerMetadata(req.params.fingerprint, req.body)); } catch (error) { sendError(res, error); } });
 app.delete('/api/peers/:fingerprint', requireAuth, async (req, res) => { try { await panelService.deletePeer(req.params.fingerprint); res.status(204).end(); } catch (error) { sendError(res, error); } });

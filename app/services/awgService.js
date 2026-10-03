@@ -10,6 +10,7 @@ const { DatabaseSync } = require('node:sqlite');
 const QRCode = require('qrcode');
 const { decryptBackup, encryptBackup, plainBackup, validatePassphrase } = require('./backupService');
 const { createUsageStore, validState: validUsageState } = require('./usageService');
+const { parseClientConfig } = require('./clientConfigService');
 
 const execFileAsync = promisify(execFile);
 
@@ -735,7 +736,7 @@ function createAwgService(env = process.env, dependencies = {}) {
         displayStatus: peerDisplayStatus(peer, accessState),
         status: client ? 'active' : 'existing',
         hasConfig: Boolean(client?.encryptedConfig),
-        canDelete: Boolean(client?.clientId),
+        canDelete: Boolean(client?.clientId && !client.clientId.startsWith('awg-existing-')),
         note: noteStore.getNote(fingerprint),
         telegram: noteStore.getTelegram(fingerprint)
       };
@@ -996,6 +997,51 @@ function createAwgService(env = process.env, dependencies = {}) {
     return { client, config: decrypt(client.encryptedConfig, dataKey) };
   }
 
+  async function importClientConfig(fingerprint, input) {
+    return withGateLock(async () => {
+      if (!/^[a-f0-9]{12}$/.test(fingerprint)) throw createHttpError(400, 'invalid_peer_id', 'Некорректный идентификатор клиента.');
+      if (clientStore.findActive(fingerprint)) throw createHttpError(409, 'client_config_exists', 'Конфиг этого клиента уже сохранён в панели.');
+      const parsed = parseClientConfig(input?.config, CLIENT_PARAMETER_ORDER);
+      const [inventory, profile, configBefore] = await Promise.all([receiver('/awg/peers'), receiver('/awg/profile'), readAwgConfig()]);
+      if (inventory?.status !== 'ok' || !Array.isArray(inventory.peers) || profile?.status !== 'ok' || typeof configBefore !== 'string') {
+        throw createHttpError(503, 'awg_unavailable', 'Не удалось проверить конфиг на текущем сервере.');
+      }
+      const matches = inventory.peers.filter(peer => createFingerprint(peer.publicKey) === fingerprint);
+      if (matches.length !== 1 || matches[0].publicKey !== parsed.publicKey) {
+        throw createHttpError(400, 'client_key_mismatch', 'Этот конфиг принадлежит другому клиенту. Выберите исходный конфиг выбранного пользователя.');
+      }
+      const context = await getGateContext(fingerprint, inventory);
+      if (parsed.client.Address !== context.address) throw createHttpError(400, 'client_address_mismatch', 'Адрес в конфиге не совпадает с адресом выбранного клиента.');
+      if (parsed.server.PublicKey !== profile.serverPublicKey) throw createHttpError(400, 'client_server_mismatch', 'Этот конфиг принадлежит другому серверу.');
+      const port = await readPublishedVpnPort(profile.listenPort);
+      if (!port || parsed.server.Endpoint !== `${endpointHost}:${port}`) {
+        throw createHttpError(400, 'client_endpoint_mismatch', 'IP или VPN-порт в конфиге не совпадает с текущим сервером.');
+      }
+      const blocks = configBefore.split(/^\s*\[Peer\]\s*$/gmi).slice(1);
+      const targets = blocks.filter(block => /^\s*PublicKey\s*=\s*(\S+)\s*$/mi.exec(block)?.[1] === parsed.publicKey);
+      if (targets.length !== 1) throw createHttpError(409, 'peer_identity_unverified', 'Клиент не найден однозначно в серверном конфиге.');
+      const psk = /^\s*PresharedKey\s*=\s*(\S+)\s*$/mi.exec(targets[0])?.[1] || '';
+      if ((parsed.server.PresharedKey || '') !== psk) throw createHttpError(400, 'client_psk_mismatch', 'Ключ подключения в конфиге не совпадает с серверным.');
+      // Amnezia permits separate client junk settings and special junk packets.
+      // Compare only shared handshake fields, not Jc/Jmin/Jmax or I1-I5.
+      for (const name of ['S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4', 'HeaderProtectionKey']) {
+        const expected = profile.clientInterfaceParameters?.[name];
+        if (expected !== undefined && String(expected) !== parsed.client[name]) {
+          throw createHttpError(400, 'client_obfuscation_mismatch', 'Параметры маскировки в конфиге отличаются от текущего сервера.');
+        }
+      }
+      if (configBefore !== await readAwgConfig()) throw createHttpError(409, 'client_import_state_changed', 'Конфиг сервера изменился во время проверки. Повторите загрузку.');
+      const label = matches[0].clientName || `Клиент ${context.address}`;
+      let receiverLabel;
+      try { receiverLabel = safeClientLabel(label); } catch { receiverLabel = `Client-${fingerprint}`; }
+      // Keep the existing gate device identity when attaching configuration.
+      clientStore.insert({ clientId: context.deviceId, label, receiverLabel,
+        publicKeyFingerprint: fingerprint, address: context.address,
+        encryptedConfig: encrypt(parsed.config, dataKey), createdAt: new Date().toISOString() });
+      return { status: 'ok', id: fingerprint, hasConfig: true };
+    });
+  }
+
   async function getQr(fingerprint) {
     const { config } = await getConfig(fingerprint);
     return QRCode.toString(config, { type: 'svg', width: 512, margin: 1, errorCorrectionLevel: 'M' });
@@ -1007,7 +1053,7 @@ function createAwgService(env = process.env, dependencies = {}) {
 
   async function deletePeerUnlocked(fingerprint) {
     const client = clientStore.findActive(fingerprint);
-    if (!client) throw createHttpError(404, 'peer_not_managed', 'Nait-AWG can delete only peers it created');
+    if (!client || client.clientId.startsWith('awg-existing-')) throw createHttpError(404, 'peer_not_managed', 'Nait-AWG can delete only peers it created');
     await receiver(`/awg/peers/${encodeURIComponent(fingerprint)}`, {
       method: 'DELETE',
       headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID(), 'x-request-id': crypto.randomUUID() },
@@ -1032,7 +1078,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     return updatePeerMetadata(fingerprint, { note: value, telegram: noteStore.getTelegram(fingerprint) });
   }
 
-  return { listPeers, createPeer, getConfig, getQr, deletePeer, updatePeerMetadata, updatePeerNote,
+  return { listPeers, createPeer, getConfig, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
     readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
     getUsage, sampleUsage, startUsageTracking, receiver };
 }
