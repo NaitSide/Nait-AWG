@@ -413,12 +413,6 @@ function closeModal(modal) {
   }
   if (modal.id === 'usageModal') usageRequestId++;
 }
-document.getElementById('missingConfigTraffic').addEventListener('click', () => {
-  const row = clientConfigRow;
-  closeModal(document.getElementById('clientConfigModal'));
-  if (row) openUsage(row);
-});
-
 function renderUsageMonths(usage) {
   const chart = document.getElementById('usageMonths');
   const detail = document.getElementById('usageMonthDetail');

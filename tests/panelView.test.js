@@ -126,7 +126,7 @@ test('never-connected status is grey and has its own filter', () => {
 test('client row exposes a provisional access state for the checking button', () => {
   const html = render('', '', { accessState: 'on' });
   assert.match(html, /data-access-state="on"/);
-  assert.match(html, /panel\.js\?v=26/);
+  assert.match(html, /panel\.js\?v=27/);
   assert.match(html, /admin-password-popover/);
   assert.match(html, /adminPasswordRequirement/);
   assert.match(html, /novalidate/);
@@ -147,7 +147,7 @@ test('missing configs have a separate explanation button without replacing traff
   assert.match(html, /class="gate-config-info"[^>]*aria-label="Почему недоступны конфиг и QR-код">!<\/button>/);
   assert.match(html, /id="clientConfigModal"/);
   assert.match(html, /Действующее VPN-подключение сохраняется/);
-  assert.doesNotMatch(html, /Загрузить конфиг|id="clientConfigForm"|id="clientConfigHelp"/);
+  assert.doesNotMatch(html, /Загрузить конфиг|Посмотреть трафик|id="clientConfigForm"|id="clientConfigHelp"/);
   assert.doesNotMatch(render('', '', { hasConfig: true }), /class="gate-config-info"/);
 });
 
@@ -171,6 +171,6 @@ test('backup card offers export and a guarded restore workflow', () => {
   assert.match(html, /Endpoint из копии/);
   assert.match(html, /Endpoint этого сервера/);
   assert.match(html, /текущие данные будут заменены/);
-  assert.match(html, /panel\.js\?v=26/);
-  assert.match(html, /panel\.css\?v=28/);
+  assert.match(html, /panel\.js\?v=27/);
+  assert.match(html, /panel\.css\?v=29/);
 });
