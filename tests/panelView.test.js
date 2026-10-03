@@ -144,8 +144,10 @@ test('status badge opens a traffic modal without changing grey status colors', (
 test('missing configs have a separate explanation button without replacing traffic status', () => {
   const html = render('', '', { hasConfig: false, displayStatus: 'inactive' });
   assert.match(html, /gate-status-button[^>]*title="Показать трафик клиента">Неактивен/);
-  assert.match(html, /class="gate-config-info"[^>]*aria-label="Почему недоступны конфиг и QR-код">!<\/button>/);
+  assert.match(html, /class="gate-config-info"[^>]*aria-label="Почему недоступны конфиг и QR-код"><svg[^>]*width="18" height="18"[^>]*stroke-width="1\.333333"/);
   assert.match(html, /id="clientConfigModal"/);
+  assert.match(html, /<circle cx="12" cy="12" r="10" stroke-width="1\.066667"\/>/);
+  assert.match(html, /<line x1="12" x2="12" y1="8" y2="12"\/>/);
   assert.match(html, /Действующее VPN-подключение сохраняется/);
   assert.doesNotMatch(html, /Загрузить конфиг|Посмотреть трафик|id="clientConfigForm"|id="clientConfigHelp"/);
   assert.doesNotMatch(render('', '', { hasConfig: true }), /class="gate-config-info"/);
@@ -172,5 +174,5 @@ test('backup card offers export and a guarded restore workflow', () => {
   assert.match(html, /Endpoint этого сервера/);
   assert.match(html, /текущие данные будут заменены/);
   assert.match(html, /panel\.js\?v=27/);
-  assert.match(html, /panel\.css\?v=29/);
+  assert.match(html, /panel\.css\?v=30/);
 });
