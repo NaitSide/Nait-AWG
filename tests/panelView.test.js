@@ -177,5 +177,5 @@ test('backup card offers export and a guarded restore workflow', () => {
   assert.match(html, /Endpoint этого сервера/);
   assert.match(html, /текущие данные будут заменены/);
   assert.match(html, /panel\.js\?v=32/);
-  assert.match(html, /panel\.css\?v=34/);
+  assert.match(html, /panel\.css\?v=36/);
 });

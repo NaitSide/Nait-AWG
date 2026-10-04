@@ -9,7 +9,7 @@ test('QR and download dialogs have compact application tabs, copy actions and sa
     for (const format of ['awg','vpn']) assert.match(html,new RegExp(`data-share-modal="${kind}" data-share-format="${format}"`));
   }
   assert.match(html,/id="clientDownloadModal"/);
-  assert.match(html,/id="copyQr"[^>]*disabled>Скопировать QR/);
+  assert.match(html,/<button class="btn purple" id="copyQr"[^>]*disabled>Скопировать QR/);
   assert.ok(html.indexOf('id="copyQr"') < html.indexOf('id="downloadQr"'));
   assert.match(html,/id="qrMultipartHint" hidden/);
   assert.match(html,/QR переключается автоматически/);
@@ -24,4 +24,9 @@ test('VPN QR is deferred explicitly and native QR copy uses a PNG ClipboardItem'
   assert.match(js,/new ClipboardItem\(\{ 'image\/png': png \}\)/);
   assert.match(js,/requestId !== qrRequestId/);
   assert.match(js,/\?format=amneziavpn/);
+});
+test('share feedback always reserves two text lines without resizing either dialog', () => {
+  const css = fs.readFileSync(require.resolve('../app/public/panel.css'),'utf8');
+  assert.match(css,/\.share-instructions \.share-status\{[^}]*line-height:1\.6;block-size:3\.2em;overflow:auto/);
+  assert.doesNotMatch(css,/\.share-status:empty\{[^}]*display:none/);
 });
