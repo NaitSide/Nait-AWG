@@ -99,7 +99,7 @@ test('import preserves existing peer identity and stores only encrypted config, 
     const peer = (await item.service.listPeers())[0];
     assert.equal(peer.hasConfig, true);
     assert.equal(peer.label, 'Старый клиент');
-    assert.equal(peer.canDelete, false);
+    assert.equal(peer.canDelete, true);
     assert.equal((await item.service.getConfig(fingerprint)).config, nativeConfig);
     assert.match(await item.service.getQr(fingerprint), /<svg/);
     const db = new DatabaseSync(item.env.NAIT_AWG_DATA_PATH, { readOnly: true });
@@ -111,7 +111,6 @@ test('import preserves existing peer identity and stores only encrypted config, 
     assert.equal((await restarted.getConfig(fingerprint)).config, nativeConfig);
     assert.deepEqual(await restarted.readPeerAccess(fingerprint), { state: 'on', address: '10.8.1.2/32' });
     assert.ok(item.state.calls.every(call => call.method === 'GET' || call.url === '/awg/gates/read'));
-    await assert.rejects(restarted.deletePeer(fingerprint), { code: 'peer_not_managed' });
     await assert.rejects(restarted.importClientConfig(fingerprint, { config: nativeConfig }), { code: 'client_config_exists' });
   } finally { await item.close(); }
 });

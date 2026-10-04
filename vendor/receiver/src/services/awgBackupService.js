@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs/promises');
+const crypto = require('crypto');
 const path = require('path');
 const { runFile } = require('../utils/exec');
 
@@ -42,7 +43,7 @@ async function copyFromContainerIfExists(config, containerPath, target) {
 }
 
 async function createPeerBackup(config, containerConfigPath, operation) {
-  const backupId = timestampId();
+  const backupId = `${timestampId()}_${crypto.randomUUID()}`;
   const backupDir = path.join(getBackupRoot(), operation, backupId);
   const configDir = path.posix.dirname(containerConfigPath);
   const files = [

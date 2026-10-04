@@ -736,7 +736,7 @@ function createAwgService(env = process.env, dependencies = {}) {
         displayStatus: peerDisplayStatus(peer, accessState),
         status: client ? 'active' : 'existing',
         hasConfig: Boolean(client?.encryptedConfig),
-        canDelete: Boolean(client?.clientId && !client.clientId.startsWith('awg-existing-')),
+        canDelete: KEY_PATTERN.test(peer.publicKey) && accessState !== 'unknown',
         note: noteStore.getNote(fingerprint),
         telegram: noteStore.getTelegram(fingerprint)
       };
@@ -1053,13 +1053,17 @@ function createAwgService(env = process.env, dependencies = {}) {
 
   async function deletePeerUnlocked(fingerprint) {
     const client = clientStore.findActive(fingerprint);
-    if (!client || client.clientId.startsWith('awg-existing-')) throw createHttpError(404, 'peer_not_managed', 'Nait-AWG can delete only peers it created');
+    const external = !client || client.clientId.startsWith('awg-existing-');
+    const context = external ? await getGateContext(fingerprint) : null;
     await receiver(`/awg/peers/${encodeURIComponent(fingerprint)}`, {
       method: 'DELETE',
       headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID(), 'x-request-id': crypto.randomUUID() },
-      body: JSON.stringify({ clientId: client.clientId, allowedIp: client.address })
+      body: JSON.stringify(external
+        ? { clientId: `awg-existing-${fingerprint}`, allowedIp: context.address, publicKey: context.publicKey }
+        : { clientId: client.clientId, allowedIp: client.address })
     });
     clientStore.markDeleted(fingerprint);
+    gateReadCache.delete(fingerprint);
   }
 
   async function updatePeerMetadata(fingerprint, input) {

@@ -188,6 +188,9 @@ function validateCreatePeerRequest(req) {
 function validateDeletePeerRequest(req, options = {}) {
   const body = req.body || {};
   const errors = [];
+  if (body.publicKey !== undefined && !WG_KEY_PATTERN.test(String(body.publicKey))) {
+    errors.push(validationError('publicKey', 'invalid_public_key', 'publicKey must be a WireGuard public key'));
+  }
   const idempotencyKey = getIdempotencyKey(req);
   const publicKeyFingerprint = String(req.params.publicKeyFingerprint || body.publicKeyFingerprint || '').trim();
 
@@ -215,6 +218,7 @@ function validateDeletePeerRequest(req, options = {}) {
       idempotencyKey,
       clientId: String(body.clientId || '').trim(),
       publicKeyFingerprint: publicKeyFingerprint.toLowerCase(),
+      ...(body.publicKey !== undefined ? { publicKey: String(body.publicKey) } : {}),
       allowedIp: String(body.allowedIp || '').trim()
     }
   };

@@ -18,7 +18,7 @@ async function fixture() {
   const calls = [];
   const state = { runtime: [ADDRESS], persistent: [ADDRESS], divergentAfterClear: false,
     peer2: null, version: null, planHash: null, operationId: null,
-    peerState: 'inactive', latestHandshakeAt: null, transferRx: 0, transferTx: 0 };
+    peerState: 'inactive', latestHandshakeAt: null, transferRx: 0, transferTx: 0, deleted: false, failDelete: false };
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -28,12 +28,20 @@ async function fixture() {
       res.end(JSON.stringify(value));
     };
     if (req.url === '/awg/peers' && req.method === 'GET') {
-      answer(200, { status: 'ok', peers: [
+      answer(200, { status: 'ok', peers: state.deleted ? [] : [
         { publicKey: PUBLIC_KEY, clientName: 'Amnezia phone', allowedIps: state.runtime, state: state.peerState,
           latestHandshakeAt: state.latestHandshakeAt, transferRx: state.transferRx, transferTx: state.transferTx },
         ...(state.peer2 ? [{ publicKey: state.peer2, allowedIps: [ADDRESS] }] : [])
       ] });
       return;
+    }
+    if (req.method === 'DELETE' && req.url === '/awg/peers/' + FINGERPRINT) {
+      calls.push({ step: 'delete', payload });
+      if (state.failDelete) return answer(409, { code: 'peer_delete_verify_failed', message: 'Not deleted' });
+      if (payload.publicKey !== PUBLIC_KEY || payload.allowedIp !== ADDRESS
+          || payload.clientId !== 'awg-existing-' + FINGERPRINT) return answer(409, { code: 'identity_mismatch' });
+      state.deleted = true;
+      return answer(200, { status: 'ok' });
     }
     const step = req.url?.split('/').pop();
     if (!req.url?.startsWith('/awg/gates/')) return answer(404, { code: 'not_found' });
@@ -146,6 +154,31 @@ test('existing peers use the client name supplied by Amnezia', async () => {
     const peer = (await item.service.listPeers())[0];
     assert.equal(peer.label, 'Amnezia phone');
     assert.equal(peer.hasConfig, false);
-    assert.equal(peer.canDelete, false);
+    assert.equal(peer.canDelete, true);
+  } finally { await item.close(); }
+});
+
+for (const closed of [false, true]) test(`panel deletes ${closed ? 'closed' : 'open'} external clients using verified key and original address`, async () => {
+  const item = await fixture();
+  try {
+    if (closed) await item.service.setPeerAccess(FINGERPRINT, false);
+    assert.equal((await item.service.listPeers())[0].canDelete, true);
+    await item.service.deletePeer(FINGERPRINT);
+    assert.deepEqual(await item.service.listPeers(), []);
+    assert.equal(item.calls.filter(call => call.step === 'delete').length, 1);
+    assert.deepEqual(await createAwgService(item.env).listPeers(), []);
+  } finally { await item.close(); }
+});
+
+test('a rejected Receiver deletion retains external peer and its reserved address', async () => {
+  const item = await fixture();
+  try {
+    await item.service.setPeerAccess(FINGERPRINT, false);
+    item.state.failDelete = true;
+    await assert.rejects(item.service.deletePeer(FINGERPRINT), { code: 'peer_delete_verify_failed' });
+    const peer = (await createAwgService(item.env).listPeers())[0];
+    assert.equal(peer.address, ADDRESS);
+    assert.equal(peer.accessState, 'off');
+    assert.equal(peer.canDelete, true);
   } finally { await item.close(); }
 });

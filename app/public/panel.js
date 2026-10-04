@@ -119,7 +119,7 @@ function selectRow(row) {
   configButton.title = hasConfig ? 'Скачать конфиг' : 'Недоступно: исходный конфиг этого клиента не хранится на сервере';
   configButton.setAttribute('aria-disabled', String(!hasConfig));
   deleteButton.disabled = !canDelete;
-  deleteButton.title = canDelete ? 'Удалить peer' : 'Недоступно: клиент создан вне Nait-AWG';
+  deleteButton.title = canDelete ? 'Удалить клиента' : 'Недоступно: состояние клиента не подтверждено';
   deleteForm.action = canDelete ? row.dataset.deleteUrl : '';
   selectionNote.textContent = 'Выбран: ' + row.dataset.label;
   history.replaceState(null, '', '/panel?selected=' + encodeURIComponent(row.dataset.peerId));
@@ -828,7 +828,7 @@ document.addEventListener('keydown', event => {
   if (topModal) closeModal(topModal);
 });
 deleteForm.addEventListener('submit', event => {
-  if (!selectedRow || selectedRow.dataset.canDelete !== 'true' || !confirm('Удалить peer «' + selectedRow.dataset.label + '»?')) event.preventDefault();
+  if (!selectedRow || selectedRow.dataset.canDelete !== 'true' || !confirm('Удалить клиента «' + selectedRow.dataset.label + '»? Его VPN-доступ будет отозван, действующий конфиг перестанет работать.')) event.preventDefault();
 });
 powerButton.addEventListener('click', () => {
   const row = selectedRow;

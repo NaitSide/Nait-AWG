@@ -6,7 +6,7 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "check": "node --check src/app.js && node --check src/middleware/auth.js && node --check src/routes/awg.js && node --check src/services/awgService.js && node --check src/services/awgConfigService.js && node --check src/services/awgGateService.js && node --check src/services/awgBackupService.js && node --check src/services/awgPeerService.js && node --check src/services/awgPeerWriteService.js && node --check src/services/awgRestoreService.js && node --check src/utils/exec.js && node --check src/utils/lock.js && node --test src/services/*.test.js src/utils/*.test.js src/middleware/*.test.js",
+    "check": "node --check src/app.js && node --check src/middleware/auth.js && node --check src/routes/awg.js && node --check src/services/awgService.js && node --check src/services/awgConfigService.js && node --check src/services/awgGateService.js && node --check src/services/awgBackupService.js && node --check src/services/awgPeerService.js && node --check src/services/existingPeerDeleteService.js && node --check src/services/awgPeerWriteService.js && node --check src/services/awgRestoreService.js && node --check src/utils/exec.js && node --check src/utils/lock.js && node --test src/services/*.test.js src/utils/*.test.js src/middleware/*.test.js",
     "test": "node --test src/services/*.test.js src/utils/*.test.js src/middleware/*.test.js"
   },
   "dependencies": {

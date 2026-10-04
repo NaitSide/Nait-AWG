@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { runFile } = require('../utils/exec');
 const { withDirectoryLock } = require('../utils/lock');
+const { deleteExistingPeer } = require('./existingPeerDeleteService');
 const { createPeerCreateBackup, createPeerDeleteBackup } = require('./awgBackupService');
 const {
   appendPeerBlock,
@@ -79,7 +80,8 @@ function createDeletePayloadFingerprint(payload) {
   const safePayload = {
     clientId: payload.clientId,
     publicKeyFingerprint: payload.publicKeyFingerprint,
-    allowedIp: payload.allowedIp
+    allowedIp: payload.allowedIp,
+    ...(payload.publicKey ? { publicKey: payload.publicKey } : {})
   };
 
   return crypto
@@ -494,7 +496,8 @@ async function deletePeer(payload, context) {
     idempotencyKey: payload.idempotencyKey,
     clientId: payload.clientId,
     publicKeyFingerprint: payload.publicKeyFingerprint,
-    allowedIp: payload.allowedIp
+    allowedIp: payload.allowedIp,
+    ...(payload.publicKey ? { publicKey: payload.publicKey } : {})
   };
   const payloadFingerprint = createDeletePayloadFingerprint(target);
   const lockTimeoutMs = Number(process.env.AWG_LOCK_TIMEOUT_MS || 15000);
@@ -507,6 +510,13 @@ async function deletePeer(payload, context) {
       }
       return deletePeerFromRecord(existing, requestId);
     }
+
+    if (payload.publicKey) return deleteExistingPeer(payload, { ...context,
+      commit: details => writeIdempotencyRecord(target.idempotencyKey, {
+        status: 'deleted', payloadFingerprint, clientId: target.clientId,
+        publicKeyFingerprint: target.publicKeyFingerprint, allowedIp: target.allowedIp,
+        ...details, createdAt: nowIso()
+      }) });
 
     const previousStatus = await assertRuntimeReady(requestId);
     if (previousStatus.peersCount <= 0) {
