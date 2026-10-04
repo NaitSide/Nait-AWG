@@ -126,7 +126,7 @@ test('never-connected status is grey and has its own filter', () => {
 test('client row exposes a provisional access state for the checking button', () => {
   const html = render('', '', { accessState: 'on' });
   assert.match(html, /data-access-state="on"/);
-  assert.match(html, /panel\.js\?v=30/);
+  assert.match(html, /panel\.js\?v=32/);
   assert.match(html, /admin-password-popover/);
   assert.match(html, /adminPasswordRequirement/);
   assert.match(html, /novalidate/);
@@ -176,6 +176,6 @@ test('backup card offers export and a guarded restore workflow', () => {
   assert.match(html, /Endpoint из копии/);
   assert.match(html, /Endpoint этого сервера/);
   assert.match(html, /текущие данные будут заменены/);
-  assert.match(html, /panel\.js\?v=30/);
-  assert.match(html, /panel\.css\?v=32/);
+  assert.match(html, /panel\.js\?v=32/);
+  assert.match(html, /panel\.css\?v=34/);
 });

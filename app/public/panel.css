@@ -122,3 +122,25 @@ th.sortable.sorted.asc .sort-asc,th.sortable.sorted.desc .sort-desc{display:bloc
 @media(max-width:650px){.shell{display:block;width:calc(100% - 20px);margin:10px auto}.sidebar{min-height:0;margin-bottom:10px}.sidebar-note{display:none}.nav{display:flex;padding-bottom:0}.nav button{width:auto}.nav .badge{display:none}.topbar{align-items:flex-start;flex-direction:column}.content{padding:14px}.toolbar{flex-direction:column;align-items:stretch}.search,.cdrop,.cdrop-btn{width:100%;min-width:0}.gate-selected-actions{gap:6px}.gate-table-meta{justify-content:space-between}.selection-note{overflow:hidden;text-overflow:ellipsis}.parameter-grid,.admin-access-fields{grid-template-columns:1fr}.admin-access-card .card-head{align-items:flex-start}.admin-access-toggle{min-width:0}}
 @media(max-width:650px){.settings-identity{justify-items:start;text-align:left}.version-comparison-row{grid-template-columns:minmax(78px,1fr) minmax(92px,.9fr) minmax(92px,.9fr)}.version-comparison-row>span:nth-child(2){padding-right:8px}.version-comparison-row>span:nth-child(3){padding-left:8px}.version-comparison-head{font-size:9px}}
 @media(max-width:650px){.sidebar-note{display:block;margin-top:12px;padding-top:12px}}
+
+/* Compact application chooser shared by QR and profile download. */
+.share-modal{max-height:calc(100dvh - 48px);overflow-y:auto}
+.share-tabs{display:flex;gap:4px;margin:16px 24px 0;padding:4px;border:1px solid var(--line);border-radius:var(--radius);background:rgba(13,11,20,.35)}
+.share-tabs button{flex:1;min-height:32px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.share-tabs button.active{border-color:rgba(151,134,196,.35);background:rgba(151,134,196,.13);color:var(--text)}
+.share-tabs button:focus-visible,.share-copy:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.share-instructions{padding:0 24px 16px;color:var(--muted);font-size:12px;line-height:1.6}
+#clientDownloadModal .share-instructions{padding-top:18px}
+.share-instructions p{margin:0 0 8px}
+.share-links{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.share-links a,.share-copy{color:var(--muted);font-size:11px;text-decoration:none}
+.share-links a:hover,.share-copy:hover{color:var(--text)}
+.share-copy{padding:0;border:0;background:transparent;font-family:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:3px}
+.share-instructions .share-status{margin:8px 0 0;font-size:11px}
+.share-status:empty{display:none}
+.qr-modal .qr-status{max-width:390px;line-height:1.6}
+.qr-multipart-hint{max-width:420px;margin:14px 0;color:var(--muted);font-size:12px;line-height:1.6}
+.share-modal .modal-actions a{text-decoration:none}
+@media(max-width:480px){.share-tabs{margin-left:16px;margin-right:16px}.share-instructions{padding-left:16px;padding-right:16px}.share-modal .modal-actions{gap:8px}.share-modal .modal-actions .btn{padding:8px 10px;font-size:11px}}
+.qr-modal #qrUseFile[hidden]{display:none}
+.qr-modal #qrActions[hidden]{display:none}

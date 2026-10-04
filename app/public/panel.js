@@ -417,7 +417,10 @@ function closeModal(modal) {
     document.getElementById('backupPasswordConfirm').required = false;
   }
   if (modal.id === 'restoreModal') resetRestoreForm();
+  if (modal.id === 'clientDownloadModal') downloadPeer = null;
   if (modal.id === 'qrModal') {
+    qrPeer = null;
+    document.getElementById('copyQr').disabled = true;
     qrRequestId += 1;
     document.getElementById('qrImage').removeAttribute('src');
     if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
@@ -840,47 +843,179 @@ qrButton.addEventListener('click', () => {
   if (!selectedRow || selectedRow.dataset.hasConfig !== 'true') return;
   openQr({ id: selectedRow.dataset.peerId, label: selectedRow.dataset.label, qrUrl: selectedRow.dataset.qrUrl });
 });
+const clientFormats = {
+  awg: { title: 'AmneziaWG', extension: 'conf', url: 'https://docs.amnezia.org/ru/documentation/instructions/use-amneziawg-app/',
+    instruction: 'Установите AmneziaWG. Добавьте туннель из скачанного файла .conf или отсканируйте QR в приложении. Затем включите подключение.' },
+  vpn: { title: 'AmneziaVPN', extension: 'vpn', url: 'https://amnezia.org/downloads',
+    instruction: 'Установите AmneziaVPN. Добавьте подключение из скачанного файла .vpn, затем включите VPN.' }
+};
+let qrPeer = null;
+let qrFormat = 'awg';
+let downloadPeer = null;
+let downloadFormat = 'awg';
+let qrCopyBusy = false;
+
+function shareInstructions(kind, format) {
+  const prefix = kind === 'qr' ? 'qr' : 'clientDownload';
+  const info = clientFormats[format];
+  document.querySelectorAll(`[data-share-modal="${kind}"]`).forEach(button => {
+    const selected = button.dataset.shareFormat === format;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+  document.getElementById(prefix + 'Instruction').textContent = info.instruction;
+  const appLink = document.getElementById(prefix + 'AppLink');
+  appLink.href = info.url;
+  appLink.textContent = format === 'awg' ? 'Приложение и инструкция ↗' : 'Скачать приложение ↗';
+  document.getElementById(prefix + 'ShareStatus').textContent = '';
+}
+
+function openClientDownload(peer) {
+  downloadPeer = peer;
+  downloadFormat = 'awg';
+  document.getElementById('clientDownloadName').textContent = peer.label;
+  selectDownloadFormat('awg');
+  showModal('clientDownloadModal');
+}
+function selectDownloadFormat(format) {
+  if (!downloadPeer) return;
+  downloadFormat = format;
+  shareInstructions('download', format);
+  const link = document.getElementById('clientDownloadFile');
+  link.href = '/api/peers/' + encodeURIComponent(downloadPeer.id) + '/config' + (format === 'vpn' ? '?format=amneziavpn' : '');
+  link.textContent = 'Скачать .' + clientFormats[format].extension;
+}
+configButton.addEventListener('click', event => {
+  event.preventDefault();
+  if (!selectedRow || selectedRow.dataset.hasConfig !== 'true') return;
+  openClientDownload({ id: selectedRow.dataset.peerId, label: selectedRow.dataset.label });
+});
+document.getElementById('createdConfig').addEventListener('click', event => {
+  event.preventDefault();
+  if (createdPeer?.id) openClientDownload({ id: createdPeer.id, label: createdPeer.label });
+});
+document.querySelectorAll('[data-share-format]').forEach(button => {
+  button.addEventListener('click', () => {
+    if (button.dataset.shareModal === 'qr') selectQrFormat(button.dataset.shareFormat);
+    else selectDownloadFormat(button.dataset.shareFormat);
+  });
+  button.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = Array.from(document.querySelectorAll(`[data-share-modal="${button.dataset.shareModal}"]`));
+    const index = tabs.indexOf(button);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].click(); tabs[next].focus();
+  });
+});
+for (const [kind, prefix] of [['qr', 'qr'], ['download', 'clientDownload']]) {
+  document.getElementById(prefix + 'CopyInstruction').addEventListener('click', async () => {
+    const format = kind === 'qr' ? qrFormat : downloadFormat;
+    const info = clientFormats[format];
+    const status = document.getElementById(prefix + 'ShareStatus');
+    try {
+      const text = `${info.title}\n${info.instruction}\n${info.url}`;
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        // Text-only fallback for self-hosted panels accessed over plain HTTP.
+        const field = document.createElement('textarea');
+        field.value = text; field.readOnly = true;
+        field.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(field); field.select();
+        try { if (!document.execCommand('copy')) throw new Error(); }
+        finally { field.remove(); }
+      }
+      status.textContent = 'Инструкция скопирована.';
+    } catch { status.textContent = 'Браузер не разрешил копирование. Можно выделить текст инструкции вручную.'; }
+  });
+}
+
 async function openQr(peer) {
+  qrPeer = peer;
+  document.getElementById('qrLabel').textContent = peer.label;
+  showModal('qrModal');
+  await selectQrFormat('awg');
+}
+async function selectQrFormat(format) {
+  if (!qrPeer) return;
+  qrFormat = format;
+  shareInstructions('qr', format);
   const requestId = ++qrRequestId;
+  const peer = qrPeer;
   const image = document.getElementById('qrImage');
   const status = document.getElementById('qrStatus');
-  const qrDownload = document.getElementById('downloadQr');
-  document.getElementById('qrLabel').textContent = peer.label;
-  image.hidden = true;
-  image.removeAttribute('src');
+  const link = document.getElementById('downloadQr');
+  const copy = document.getElementById('copyQr');
+  image.hidden = true; image.removeAttribute('src');
+  if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
+  qrObjectUrl = null;
+  copy.disabled = true;
+  link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');
   status.hidden = false;
-  status.textContent = 'Загрузка QR...';
-  qrDownload.removeAttribute('href');
-  qrDownload.setAttribute('aria-disabled', 'true');
-  qrDownload.download = 'Nait-AWG-' + peer.id.slice(0, 12) + '-QR.svg';
-  showModal('qrModal');
+  const pending = format === 'vpn';
+  document.getElementById('qrActions').hidden = pending;
+  document.getElementById('qrMultipartHint').hidden = !pending;
+  document.getElementById('qrUseFile').hidden = !pending;
+  if (pending) { status.textContent = 'QR для AmneziaVPN пока не включён. Подключение уже можно скачать в файле .vpn.'; return; }
+  status.textContent = 'Загрузка QR…';
+  link.download = 'Nait-AWG-' + peer.id.slice(0, 12) + '-QR.svg';
   try {
     const response = await fetch(peer.qrUrl);
     if (!response.ok) throw new Error('Не удалось загрузить QR-код.');
     const blob = await response.blob();
     if (requestId !== qrRequestId) return;
-    if (qrObjectUrl) URL.revokeObjectURL(qrObjectUrl);
     qrObjectUrl = URL.createObjectURL(blob);
     image.onload = () => {
       if (requestId !== qrRequestId) return;
-      image.hidden = false;
-      status.hidden = true;
+      image.hidden = false; status.hidden = true; copy.disabled = qrCopyBusy;
+      link.href = qrObjectUrl; link.removeAttribute('aria-disabled');
     };
-    image.onerror = () => {
-      if (requestId === qrRequestId) status.textContent = 'Не удалось показать QR-код.';
-    };
+    image.onerror = () => { if (requestId === qrRequestId) status.textContent = 'Не удалось показать QR-код.'; };
     image.src = qrObjectUrl;
-    qrDownload.href = qrObjectUrl;
-    qrDownload.removeAttribute('aria-disabled');
-  } catch (error) {
-    if (requestId === qrRequestId) status.textContent = error.message || 'Не удалось загрузить QR-код.';
-  }
+  } catch (error) { if (requestId === qrRequestId) status.textContent = error.message || 'Не удалось загрузить QR-код.'; }
 }
+document.getElementById('qrUseFile').addEventListener('click', () => {
+  if (!qrPeer) return;
+  const peer = qrPeer;
+  closeModal(document.getElementById('qrModal'));
+  openClientDownload(peer);
+  selectDownloadFormat('vpn');
+});
+document.getElementById('copyQr').addEventListener('click', async () => {
+  const image = document.getElementById('qrImage');
+  if (qrFormat !== 'awg' || image.hidden || !qrObjectUrl || qrCopyBusy) return;
+  const requestId = qrRequestId;
+  const status = document.getElementById('qrShareStatus');
+  const button = document.getElementById('copyQr');
+  qrCopyBusy = true; button.disabled = true;
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1024, 1024);
+    ctx.drawImage(image, 0, 0, 1024, 1024);
+    const png = new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error()), 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    if (requestId === qrRequestId) status.textContent = 'QR скопирован как картинка.';
+  } catch {
+    if (requestId === qrRequestId) status.textContent = window.isSecureContext === false
+      ? 'Для копирования картинки откройте панель по HTTPS. По HTTP используйте «Скачать QR».'
+      : 'Браузер не разрешил копирование картинки. Используйте «Скачать QR».';
+  }
+  finally {
+    qrCopyBusy = false;
+    button.disabled = qrFormat !== 'awg' || document.getElementById('qrImage').hidden;
+  }
+});
+
 document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', () => closeModal(button.closest('.modal-backdrop'))));
 document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) closeModal(modal); }));
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
-  const topModal = document.querySelector('#deleteModal.open') || document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
+  const topModal = document.querySelector('#deleteModal.open') || document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#clientDownloadModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
   if (topModal) closeModal(topModal);
 });
 deleteForm.addEventListener('submit', event => {

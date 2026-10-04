@@ -11,6 +11,7 @@ const QRCode = require('qrcode');
 const { decryptBackup, encryptBackup, plainBackup, validatePassphrase } = require('./backupService');
 const { createUsageStore, validState: validUsageState } = require('./usageService');
 const { parseClientConfig } = require('./clientConfigService');
+const { buildAmneziaVpn } = require('./clientExportService');
 
 const execFileAsync = promisify(execFile);
 
@@ -997,6 +998,15 @@ function createAwgService(env = process.env, dependencies = {}) {
     return { client, config: decrypt(client.encryptedConfig, dataKey) };
   }
 
+  async function getClientExport(fingerprint, format = 'amneziawg') {
+    if (!['amneziawg', 'amneziavpn'].includes(format)) {
+      throw createHttpError(400, 'unsupported_client_format', 'Неподдерживаемый формат подключения.');
+    }
+    const { client, config } = await getConfig(fingerprint);
+    return { client, config: format === 'amneziavpn' ? buildAmneziaVpn(config, client.label, CLIENT_PARAMETER_ORDER) : config,
+      extension: format === 'amneziavpn' ? 'vpn' : 'conf' };
+  }
+
   async function importClientConfig(fingerprint, input) {
     return withGateLock(async () => {
       if (!/^[a-f0-9]{12}$/.test(fingerprint)) throw createHttpError(400, 'invalid_peer_id', 'Некорректный идентификатор клиента.');
@@ -1082,7 +1092,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     return updatePeerMetadata(fingerprint, { note: value, telegram: noteStore.getTelegram(fingerprint) });
   }
 
-  return { listPeers, createPeer, getConfig, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
+  return { listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
     readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
     getUsage, sampleUsage, startUsageTracking, receiver };
 }
