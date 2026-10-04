@@ -36,7 +36,10 @@ function extractNativeConfig(input) {
   }
 }
 
-function parseClientConfig(input, parameterNames) {
+function parseClientConfig(input, parameterNames, { nativeOnly = false } = {}) {
+  if (nativeOnly && typeof input === 'string' && input.replace(/^\uFEFF/, '').trim().startsWith('vpn://')) {
+    throw invalid('native_config_required', 'Выберите исходный .conf для приложения AmneziaWG. Формат AmneziaVPN пока не поддерживается.');
+  }
   const text = extractNativeConfig(input);
   if (!text || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) {
     throw invalid('invalid_client_config', 'Файл не является клиентским конфигом AmneziaWG.');

@@ -1001,7 +1001,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     return withGateLock(async () => {
       if (!/^[a-f0-9]{12}$/.test(fingerprint)) throw createHttpError(400, 'invalid_peer_id', 'Некорректный идентификатор клиента.');
       if (clientStore.findActive(fingerprint)) throw createHttpError(409, 'client_config_exists', 'Конфиг этого клиента уже сохранён в панели.');
-      const parsed = parseClientConfig(input?.config, CLIENT_PARAMETER_ORDER);
+      const parsed = parseClientConfig(input?.config, CLIENT_PARAMETER_ORDER, { nativeOnly: true });
       const [inventory, profile, configBefore] = await Promise.all([receiver('/awg/peers'), receiver('/awg/profile'), readAwgConfig()]);
       if (inventory?.status !== 'ok' || !Array.isArray(inventory.peers) || profile?.status !== 'ok' || typeof configBefore !== 'string') {
         throw createHttpError(503, 'awg_unavailable', 'Не удалось проверить конфиг на текущем сервере.');

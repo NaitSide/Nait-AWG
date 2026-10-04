@@ -372,7 +372,10 @@ let createdPeer = null;
 let editBusy = false;
 let editingRow = null;
 let clientConfigRow = null;
+let clientConfigBusy = false;
 let accessBusy = false;
+let deleteBusy = false;
+let deletingRow = null;
 let backupBusy = false;
 let restoreBusy = false;
 let restoreBackupObject = null;
@@ -392,11 +395,20 @@ function closeModal(modal) {
   if (modal.id === 'createModal' && createdPeer) return finishCreate();
   if (modal.id === 'editModal' && editBusy) return;
   if (modal.id === 'accessModal' && accessBusy) return;
+  if (modal.id === 'deleteModal' && deleteBusy) return;
+  if (modal.id === 'clientConfigModal' && clientConfigBusy) return;
   if (modal.id === 'backupModal' && backupBusy) return;
   if (modal.id === 'restoreModal' && restoreBusy) return;
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
-  if (modal.id === 'clientConfigModal') clientConfigRow = null;
+  if (modal.id === 'clientConfigModal') {
+    clientConfigRow = null;
+    document.getElementById('clientConfigForm').reset();
+    document.getElementById('clientConfigForm').hidden = true;
+    document.getElementById('clientConfigError').hidden = true;
+    document.getElementById('openClientConfigImport').setAttribute('aria-expanded', 'false');
+  }
+  if (modal.id === 'deleteModal') deletingRow = null;
   if (modal.id === 'backupModal') {
     document.getElementById('backupForm').reset();
     document.getElementById('backupError').hidden = true;
@@ -413,6 +425,50 @@ function closeModal(modal) {
   }
   if (modal.id === 'usageModal') usageRequestId++;
 }
+document.getElementById('openClientConfigImport').addEventListener('click', () => {
+  const form = document.getElementById('clientConfigForm');
+  form.hidden = false;
+  document.getElementById('openClientConfigImport').setAttribute('aria-expanded', 'true');
+  document.getElementById('clientConfigFile').focus();
+});
+document.getElementById('clientConfigForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const row = clientConfigRow;
+  if (clientConfigBusy || !row || row.dataset.hasConfig === 'true') return;
+  const fileInput = document.getElementById('clientConfigFile');
+  const submit = document.getElementById('clientConfigSubmit');
+  const errorBox = document.getElementById('clientConfigError');
+  clientConfigBusy = true;
+  fileInput.disabled = submit.disabled = true;
+  submit.textContent = 'Проверяем…';
+  errorBox.hidden = true;
+  try {
+    const file = fileInput.files?.[0];
+    if (!file) throw new Error('Выберите исходный файл .conf.');
+    if (file.size > 64 * 1024) throw new Error('Выберите конфиг одного клиента размером до 64 КБ.');
+    const config = await file.text();
+    if (!config.trim()) throw new Error('Выбранный файл пуст.');
+    const response = await fetch('/api/peers/' + encodeURIComponent(row.dataset.peerId) + '/config/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+      body: JSON.stringify({ config })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || 'Не удалось импортировать конфиг.');
+    row.dataset.hasConfig = 'true';
+    row.querySelector('.gate-config-info')?.remove();
+    if (selectedRow === row) selectRow(row);
+    clientConfigBusy = false;
+    closeModal(document.getElementById('clientConfigModal'));
+  } catch (error) {
+    errorBox.textContent = error.message || 'Не удалось импортировать конфиг.';
+    errorBox.hidden = false;
+  } finally {
+    clientConfigBusy = false;
+    fileInput.disabled = submit.disabled = false;
+    submit.textContent = 'Проверить и импортировать';
+  }
+});
+
 function renderUsageMonths(usage) {
   const chart = document.getElementById('usageMonths');
   const detail = document.getElementById('usageMonthDetail');
@@ -824,11 +880,61 @@ document.querySelectorAll('[data-close-modal]').forEach(button => button.addEven
 document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) closeModal(modal); }));
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
-  const topModal = document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
+  const topModal = document.querySelector('#deleteModal.open') || document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
   if (topModal) closeModal(topModal);
 });
 deleteForm.addEventListener('submit', event => {
-  if (!selectedRow || selectedRow.dataset.canDelete !== 'true' || !confirm('Удалить клиента «' + selectedRow.dataset.label + '»? Его VPN-доступ будет отозван, действующий конфиг перестанет работать.')) event.preventDefault();
+  event.preventDefault();
+  if (!selectedRow || selectedRow.dataset.canDelete !== 'true' || deleteBusy) return;
+  deletingRow = selectedRow;
+  document.getElementById('deleteName').textContent = deletingRow.dataset.label;
+  document.getElementById('deleteTelegram').textContent = deletingRow.dataset.telegram || '—';
+  document.getElementById('deleteAddress').textContent = deletingRow.dataset.address;
+  document.getElementById('deleteNote').textContent = deletingRow.dataset.note || '—';
+  document.getElementById('deleteError').hidden = true;
+  document.getElementById('deleteConsent').setAttribute('aria-pressed', 'false');
+  document.getElementById('deleteConsent').disabled = false;
+  document.getElementById('deleteConfirm').disabled = true;
+  document.getElementById('deleteConfirm').textContent = 'Удалить клиента';
+  document.getElementById('deleteModal').classList.remove('is-confirmed');
+  showModal('deleteModal');
+  document.getElementById('deleteConsent').focus();
+});
+document.getElementById('deleteConsent').addEventListener('click', () => {
+  if (deleteBusy || !deletingRow) return;
+  const consent = document.getElementById('deleteConsent');
+  const confirmed = consent.getAttribute('aria-pressed') !== 'true';
+  consent.setAttribute('aria-pressed', String(confirmed));
+  document.getElementById('deleteModal').classList.toggle('is-confirmed', confirmed);
+  document.getElementById('deleteConfirm').disabled = !confirmed;
+});
+document.getElementById('deleteConfirm').addEventListener('click', async () => {
+  const row = deletingRow;
+  const consent = document.getElementById('deleteConsent');
+  if (!row || deleteBusy || consent.getAttribute('aria-pressed') !== 'true') return;
+  deleteBusy = true;
+  const button = document.getElementById('deleteConfirm');
+  const errorBox = document.getElementById('deleteError');
+  button.disabled = consent.disabled = true;
+  button.textContent = 'Удаляем…';
+  errorBox.hidden = true;
+  try {
+    const response = await fetch('/api/peers/' + encodeURIComponent(row.dataset.peerId), { method: 'DELETE' });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.message || 'Не удалось удалить клиента.');
+    }
+    window.location.assign('/panel');
+  } catch (error) {
+    errorBox.textContent = error.message || 'Связь прервалась. Проверьте список клиентов перед повтором.';
+    errorBox.hidden = false;
+    deleteBusy = false;
+    consent.disabled = false;
+    consent.setAttribute('aria-pressed', 'false');
+    document.getElementById('deleteModal').classList.remove('is-confirmed');
+    button.disabled = true;
+    button.textContent = 'Удалить клиента';
+  }
 });
 powerButton.addEventListener('click', () => {
   const row = selectedRow;

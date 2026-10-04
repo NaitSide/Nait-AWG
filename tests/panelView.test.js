@@ -126,7 +126,7 @@ test('never-connected status is grey and has its own filter', () => {
 test('client row exposes a provisional access state for the checking button', () => {
   const html = render('', '', { accessState: 'on' });
   assert.match(html, /data-access-state="on"/);
-  assert.match(html, /panel\.js\?v=28/);
+  assert.match(html, /panel\.js\?v=30/);
   assert.match(html, /admin-password-popover/);
   assert.match(html, /adminPasswordRequirement/);
   assert.match(html, /novalidate/);
@@ -149,7 +149,10 @@ test('missing configs have a separate explanation button without replacing traff
   assert.match(html, /<circle cx="12" cy="12" r="10" stroke-width="1\.066667"\/>/);
   assert.match(html, /<line x1="12" x2="12" y1="8" y2="12"\/>/);
   assert.match(html, /Действующее VPN-подключение сохраняется/);
-  assert.doesNotMatch(html, /Загрузить конфиг|Посмотреть трафик|id="clientConfigForm"|id="clientConfigHelp"/);
+  assert.doesNotMatch(html, /Загрузить конфиг|Посмотреть трафик|id="clientConfigHelp"|id="clientConfigText"/);
+  assert.match(html, /id="openClientConfigImport"[^>]*>Импортировать \.conf/);
+  assert.match(html, /id="clientConfigForm" hidden/);
+  assert.match(html, /id="clientConfigFile" type="file" accept="\.conf" required/);
   assert.doesNotMatch(render('', '', { hasConfig: true }), /class="gate-config-info"/);
 });
 
@@ -173,6 +176,6 @@ test('backup card offers export and a guarded restore workflow', () => {
   assert.match(html, /Endpoint из копии/);
   assert.match(html, /Endpoint этого сервера/);
   assert.match(html, /текущие данные будут заменены/);
-  assert.match(html, /panel\.js\?v=28/);
-  assert.match(html, /panel\.css\?v=30/);
+  assert.match(html, /panel\.js\?v=30/);
+  assert.match(html, /panel\.css\?v=32/);
 });

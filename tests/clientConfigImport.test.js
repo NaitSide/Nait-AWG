@@ -95,7 +95,7 @@ test('duplicate keys, extra peer sections and shell hooks cannot enter exported 
 test('import preserves existing peer identity and stores only encrypted config, surviving restart', async () => {
   const item = await fixture();
   try {
-    await item.service.importClientConfig(fingerprint, { config: vpnExport() });
+    await item.service.importClientConfig(fingerprint, { config: nativeConfig });
     const peer = (await item.service.listPeers())[0];
     assert.equal(peer.hasConfig, true);
     assert.equal(peer.label, 'Старый клиент');
@@ -154,5 +154,23 @@ test('concurrent AWG edits abort import before saving client secrets', async () 
     item.state.configChanged = true;
     await assert.rejects(item.service.importClientConfig(fingerprint, { config: nativeConfig }), { code: 'client_import_state_changed' });
     assert.equal((await item.service.listPeers())[0].hasConfig, false);
+  } finally { await item.close(); }
+});
+
+test('native-only import rejects AmneziaVPN data even when named .conf', async () => {
+  const item = await fixture();
+  try {
+    await assert.rejects(item.service.importClientConfig(fingerprint, { config: vpnExport(), fileName: 'client.conf' }), { code: 'native_config_required' });
+    await assert.rejects(item.service.importClientConfig(fingerprint, { config: '{"backup":true}', fileName: 'client.conf' }), { code: 'invalid_client_config' });
+    assert.equal((await item.service.listPeers())[0].hasConfig, false);
+  } finally { await item.close(); }
+});
+
+test('valid native contents are accepted independently of filename', async () => {
+  const item = await fixture();
+  try {
+    await item.service.importClientConfig(fingerprint, { config: nativeConfig, fileName: 'anything.txt' });
+    assert.equal((await item.service.listPeers())[0].hasConfig, true);
+    assert.ok(item.state.calls.every(call => call.method === 'GET' || call.url === '/awg/gates/read'));
   } finally { await item.close(); }
 });
