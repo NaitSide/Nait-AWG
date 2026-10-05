@@ -41,9 +41,10 @@ function loadAdminAuthState() {
     if (stored.schemaVersion !== 1 || typeof stored.passwordHash !== 'string' || !Number.isSafeInteger(stored.sessionVersion) || stored.sessionVersion < 0) {
       throw new Error('invalid admin auth state');
     }
-    return { passwordHash: stored.passwordHash, sessionVersion: stored.sessionVersion };
+    if (stored.login !== undefined && !/^[a-zA-Z0-9_.-]{1,64}$/.test(stored.login)) throw new Error('invalid admin login');
+    return { login: stored.login || adminLogin, passwordHash: stored.passwordHash, sessionVersion: stored.sessionVersion };
   } catch (error) {
-    if (error.code === 'ENOENT') return { passwordHash: '', sessionVersion: 0 };
+    if (error.code === 'ENOENT') return { login: adminLogin, passwordHash: '', sessionVersion: 0 };
     throw new Error(`Cannot read Nait-AWG admin auth state: ${error.message}`);
   }
 }
@@ -106,9 +107,10 @@ function passwordMatches(password) {
   }
 }
 
-async function saveAdminPassword(password) {
+async function saveAdminCredentials(login, password) {
   const nextState = {
     schemaVersion: 1,
+    login,
     passwordHash: createPasswordHash(password),
     sessionVersion: adminAuthState.sessionVersion + 1,
     updatedAt: new Date().toISOString()
@@ -122,7 +124,7 @@ async function saveAdminPassword(password) {
   } finally {
     await fs.promises.unlink(temporaryPath).catch(() => {});
   }
-  adminAuthState = { passwordHash: nextState.passwordHash, sessionVersion: nextState.sessionVersion };
+  adminAuthState = { login, passwordHash: nextState.passwordHash, sessionVersion: nextState.sessionVersion };
 }
 
 function readCookies(header) {
@@ -157,11 +159,12 @@ function requirePageAuth(req, res, next) {
 function sendError(res, error) {
   const status = error.status || 500;
   console.error('[nait-awg]', error.code || 'internal_error', error.message);
-  res.status(status).json({ code: error.code || 'internal_error', message: status < 500 ? error.message : 'Внутренняя ошибка панели.' });
+  const safeOperationalMessage=['obfuscation_pending','obfuscation_pending_invalid','obfuscation_pending_conflict','obfuscation_rollback_failed','obfuscation_apply_failed'].includes(error.code);
+  res.status(status).json({ code: error.code || 'internal_error', message: status < 500 || safeOperationalMessage ? error.message : 'Внутренняя ошибка панели.' });
 }
 
 function credentialsMatch(body) {
-  return stringsMatch(body?.username ?? body?.login, adminLogin) && passwordMatches(body?.password);
+  return stringsMatch(body?.username ?? body?.login, adminAuthState.login) && passwordMatches(body?.password);
 }
 
 function issueSession(res) {
@@ -247,13 +250,17 @@ app.post('/login', (req, res) => {
 app.post('/api/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.status(204).end(); });
 app.post('/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`); res.redirect(303, '/'); });
 app.get('/api/session', (req, res) => res.json({ authenticated: isAuthenticated(req) }));
-app.patch('/api/admin/password', requireAuth, async (req, res) => {
+let adminCredentialsBusy = false;
+app.patch(['/api/admin/credentials', '/api/admin/password'], requireAuth, async (req, res) => {
   const origin = req.get('origin');
   const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
   if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   const currentPassword = String(req.body?.currentPassword || '');
   const newPassword = String(req.body?.newPassword || '');
   const repeatPassword = String(req.body?.repeatPassword || '');
+  const login = req.path === '/api/admin/password' ? adminAuthState.login : String(req.body?.login || '').trim();
+  if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(login)) return res.status(400).json({ code: 'invalid_admin_login', message: 'Логин: от 1 до 64 символов, латинские буквы, цифры, точка, дефис или подчёркивание.' });
+  if (adminCredentialsBusy) return res.status(409).json({ code: 'credentials_busy', message: 'Реквизиты уже сохраняются. Повторите вход.' });
   if (!passwordMatches(currentPassword)) return res.status(401).json({ code: 'invalid_current_password', message: 'Текущий пароль указан неверно.' });
   const passwordIsStrong = newPassword.length >= 12
     && newPassword.length <= 256
@@ -262,20 +269,36 @@ app.patch('/api/admin/password', requireAuth, async (req, res) => {
     && /[A-Z]/.test(newPassword)
     && /[0-9]/.test(newPassword)
     && /[@#%^*_.!+\-]/.test(newPassword);
-  if (!passwordIsStrong) {
+  const changePassword = req.path === '/api/admin/password' || Boolean(newPassword || repeatPassword);
+  if (changePassword && !passwordIsStrong) {
     return res.status(400).json({ code: 'invalid_new_password', message: 'Пароль слишком простой. Используйте от 12 до 256 символов: минимум одну заглавную и одну строчную латинскую букву, одну цифру и один специальный символ @#%^*_.!+-.' });
   }
   if (newPassword !== repeatPassword) return res.status(400).json({ code: 'password_mismatch', message: 'Новые пароли не совпадают.' });
-  if (passwordMatches(newPassword)) return res.status(400).json({ code: 'password_unchanged', message: 'Новый пароль совпадает с текущим.' });
+  if (changePassword && passwordMatches(newPassword)) return res.status(400).json({ code: 'password_unchanged', message: 'Новый пароль совпадает с текущим.' });
+  if (!changePassword && login === adminAuthState.login) return res.status(400).json({ code: 'credentials_unchanged', message: 'Логин и пароль не изменены.' });
+  adminCredentialsBusy = true;
   try {
-    await saveAdminPassword(newPassword);
+    await saveAdminCredentials(login, changePassword ? newPassword : currentPassword);
     res.setHeader('Set-Cookie', `nait_awg_session=; HttpOnly; ${cookieSecure ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`);
     return res.json({ status: 'ok', reauthRequired: true });
   } catch (error) {
     return sendError(res, error);
+  } finally {
+    adminCredentialsBusy = false;
   }
 });
 app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await panelService.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
+function requireSameOrigin(req,res,next){
+  const origin=req.get('origin');
+  if(origin&&origin!==`${tlsEnabled?'https':'http'}://${req.get('host')}`)return res.status(403).json({code:'invalid_origin',message:'Недопустимый источник запроса.'});
+  next();
+}
+app.get('/api/obfuscation',requireAuth,async(_req,res)=>{try{res.json(await panelService.getObfuscation());}catch(error){sendError(res,error);}});
+for(const [route,method] of [['generate','generateObfuscation'],['inspect','inspectObfuscation'],['apply','setObfuscation']]){
+  app.post('/api/obfuscation/'+route,requireAuth,requireSameOrigin,async(req,res)=>{
+    try{res.json(await panelService[method](req.body));}catch(error){sendError(res,error);}
+  });
+}
 app.get('/api/awg/releases/latest', requireAuth, async (_req, res) => {
   try { return res.json(await getLatestAwgToolsRelease()); }
   catch (error) {
@@ -370,7 +393,7 @@ app.get('/panel', requirePageAuth, async (req, res) => {
       : req.query.restored ? 'Резервная копия успешно восстановлена.' : '';
     return res.type('html').send(renderAwgPanel({ peers,
       profile: { ...profile, panelIdentity: { appVersion, serverHostname, endpointHost: publicEndpointHost } },
-      selectedId, notice, adminLogin }));
+      selectedId, notice, adminLogin: adminAuthState.login }));
   } catch (error) { return sendError(res, error); }
 });
 app.post('/panel/peers', requirePageAuth, async (req, res) => { try { const peer = await panelService.createPeer(req.body); res.redirect(303, `/panel?selected=${encodeURIComponent(peer.id)}&created=${encodeURIComponent(peer.label)}`); } catch (error) { sendError(res, error); } });

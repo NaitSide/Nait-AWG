@@ -391,6 +391,7 @@ function finishCreate() {
   if (createdPeer?.id) window.location.assign('/panel?selected=' + encodeURIComponent(createdPeer.id));
 }
 function closeModal(modal) {
+  if (modal.id === 'obfuscationModal' && modal.dataset.busy === 'true') return;
   if (modal.id === 'createModal' && createBusy) return;
   if (modal.id === 'createModal' && createdPeer) return finishCreate();
   if (modal.id === 'editModal' && editBusy) return;
@@ -1157,6 +1158,7 @@ const adminAccessToggle = document.getElementById('adminAccessToggle');
 const adminPasswordForm = document.getElementById('adminPasswordForm');
 const adminPasswordRequirement = document.getElementById('adminPasswordRequirement');
 const adminPasswordFields = [
+  document.getElementById('adminAccessLogin'),
   document.getElementById('adminCurrentPassword'),
   document.getElementById('adminNewPassword'),
   document.getElementById('adminRepeatPassword')
@@ -1186,7 +1188,7 @@ function setAdminAccessEditing(editing) {
   adminAccessToggle.setAttribute('aria-pressed', String(editing));
   document.getElementById('adminAccessMode').textContent = editing ? 'Edit mode' : 'Read-only';
   adminPasswordFields.forEach(input => { input.disabled = !editing; });
-  if (!editing) adminPasswordFields.forEach(input => { input.value = ''; });
+  if (!editing) adminPasswordFields.forEach(input => { input.value = input.id === 'adminAccessLogin' ? input.defaultValue : ''; });
   showAdminPasswordRequirement(false);
   setAdminPasswordStatus('');
   if (editing) document.getElementById('adminCurrentPassword').focus();
@@ -1204,12 +1206,18 @@ adminPasswordForm.addEventListener('submit', async event => {
   const newPassword = document.getElementById('adminNewPassword');
   const repeatPassword = document.getElementById('adminRepeatPassword');
   const submit = document.getElementById('adminPasswordSubmit');
+  const login = document.getElementById('adminAccessLogin');
+  if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(login.value.trim())) {
+    setAdminPasswordStatus('Логин: 1–64 символа, латинские буквы, цифры, точка, дефис или подчёркивание.', 'error');
+    login.focus();
+    return;
+  }
   if (!currentPassword.value) {
     setAdminPasswordStatus('Укажите текущий пароль.', 'error');
     currentPassword.focus();
     return;
   }
-  if (!adminPasswordIsStrong(newPassword.value)) {
+  if ((newPassword.value || repeatPassword.value) && !adminPasswordIsStrong(newPassword.value)) {
     setAdminPasswordStatus('Новый пароль не соответствует требованиям.', 'error');
     showAdminPasswordRequirement(true);
     newPassword.focus();
@@ -1226,10 +1234,11 @@ adminPasswordForm.addEventListener('submit', async event => {
   submit.textContent = 'Сохраняем…';
   setAdminPasswordStatus('');
   try {
-    const response = await fetch('/api/admin/password', {
+    const response = await fetch('/api/admin/credentials', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        login: login.value.trim(),
         currentPassword: currentPassword.value,
         newPassword: newPassword.value,
         repeatPassword: repeatPassword.value
@@ -1237,11 +1246,11 @@ adminPasswordForm.addEventListener('submit', async event => {
       cache: 'no-store'
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || 'Не удалось сменить пароль.');
-    setAdminPasswordStatus('Пароль изменён. Сейчас откроется экран входа.', 'success');
+    if (!response.ok) throw new Error(payload.message || 'Не удалось сохранить реквизиты.');
+    setAdminPasswordStatus('Реквизиты сохранены. Войдите с новым логином и действующим паролем.', 'success');
     setTimeout(() => window.location.assign('/'), 900);
   } catch (error) {
-    setAdminPasswordStatus(error.message || 'Не удалось сменить пароль.', 'error');
+    setAdminPasswordStatus(error.message || 'Не удалось сохранить реквизиты.', 'error');
     submit.disabled = false;
     submit.textContent = originalLabel;
   }

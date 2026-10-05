@@ -12,6 +12,8 @@ const { decryptBackup, encryptBackup, plainBackup, validatePassphrase } = requir
 const { createUsageStore, validState: validUsageState } = require('./usageService');
 const { parseClientConfig } = require('./clientConfigService');
 const { buildAmneziaVpn } = require('./clientExportService');
+const { createObfuscationService } = require('./obfuscationService');
+const obfuscationRules = require('./obfuscationRules');
 
 const execFileAsync = promisify(execFile);
 
@@ -238,6 +240,12 @@ function createClientStore(filePath) {
 
   return {
     snapshot() { return Buffer.from(db.serialize()); },
+    updateConfigs(updates) {
+      const statement=db.prepare("UPDATE clients SET encrypted_config = ? WHERE public_key_fingerprint = ? AND status = 'active'");
+      db.exec('BEGIN IMMEDIATE');
+      try {for(const item of updates)statement.run(item.encryptedConfig,item.fingerprint);db.exec('COMMIT');}
+      catch(error){db.exec('ROLLBACK');throw error;}
+    },
     snapshotState() {
       return {
         clients: db.prepare(`SELECT client_id AS clientId, label, receiver_label AS receiverLabel,
@@ -581,8 +589,13 @@ function createAwgService(env = process.env, dependencies = {}) {
   let restoreInProgress = false;
   let usageSampleInFlight = null;
   let usageTimer = null;
+  const obfuscation = createObfuscationService({receiver,directory:path.dirname(dataPath),
+    clients:()=>Array.from(clientStore.activeByFingerprint().values()).filter(client=>client.encryptedConfig),
+    encrypt:text=>encrypt(text,dataKey),decrypt:text=>decrypt(text,dataKey),
+    updateConfigs:updates=>clientStore.updateConfigs(updates)});
   function withGateLock(task) {
-    const result = gateQueue.then(task, task);
+    const runTask=async()=>{await obfuscation.recover();return task();};
+    const result = gateQueue.then(runTask, runTask);
     gateQueue = result.catch(() => {});
     return result;
   }
@@ -993,9 +1006,11 @@ function createAwgService(env = process.env, dependencies = {}) {
   }
 
   async function getConfig(fingerprint) {
-    const client = clientStore.findActive(fingerprint);
-    if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Nait-AWG or has been removed');
-    return { client, config: decrypt(client.encryptedConfig, dataKey) };
+    return withGateLock(async()=>{
+      const client = clientStore.findActive(fingerprint);
+      if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Nait-AWG or has been removed');
+      return { client, config: decrypt(client.encryptedConfig, dataKey) };
+    });
   }
 
   async function getClientExport(fingerprint, format = 'amneziawg') {
@@ -1094,6 +1109,15 @@ function createAwgService(env = process.env, dependencies = {}) {
 
   return { listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
     readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
+    getObfuscation:()=>withGateLock(()=>obfuscation.current()),
+    generateObfuscation:input=>obfuscationRules.generate(input?.parameters),
+    inspectObfuscation:input=>withGateLock(async()=>{
+      const preview=await obfuscation.inspect(input);
+      return {parameters:preview.parameters,revision:preview.state.revision,changed:preview.changed,
+        sharedChanged:preview.sharedChanged,savedConfigs:preview.savedConfigs,
+        missingConfigs:Math.max(0,(preview.state.peersCount||0)-preview.savedConfigs)};
+    }),
+    setObfuscation:input=>withGateLock(()=>obfuscation.apply(input)),
     getUsage, sampleUsage, startUsageTracking, receiver };
 }
 

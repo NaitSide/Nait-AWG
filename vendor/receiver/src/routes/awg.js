@@ -20,8 +20,21 @@ const {
   setAwgGate
 } = require('../services/awgGateService');
 const { restoreAwgConfig } = require('../services/awgRestoreService');
+const { createObfuscationService } = require('../services/awgObfuscationService');
+const obfuscation = createObfuscationService();
 
 const router = express.Router();
+// Recover a crashed obfuscation write before allowing any other AWG mutation.
+router.use(async(_req,res,next)=>{
+  try{if(obfuscation.hasPending())await obfuscation.recover();next();}
+  catch(error){res.status(error.statusCode||503).json({code:error.code||'obfuscation_recovery_failed',message:'Прерванное изменение обфускации требует проверки. Изменения AWG приостановлены.'});}
+});
+router.get('/obfuscation', async (_req,res,next)=>{
+  try {res.json(await obfuscation.get());} catch(error){res.status(error.statusCode||500).json({code:error.code||'obfuscation_failed',message:error.statusCode?error.message:'Не удалось проверить обфускацию.'});}
+});
+router.post('/obfuscation', async (req,res,next)=>{
+  try {res.json(await obfuscation.set(req.body));} catch(error){res.status(error.statusCode||500).json({code:error.code||'obfuscation_failed',message:error.statusCode?error.message:'Не удалось изменить обфускацию.'});}
+});
 
 router.get('/status', async (req, res, next) => {
   try {

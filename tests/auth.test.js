@@ -79,4 +79,24 @@ test('admin password change stores a hash and invalidates previous sessions', as
   assert.equal((await fetch(`${origin}/api/status`, { headers: { Cookie: sessionCookie } })).status, 401);
   assert.equal((await login('InitialPass123!')).status, 401);
   assert.equal((await login('NewPassword456!')).status, 200);
+  const newCookie=(await login('NewPassword456!')).headers.get('set-cookie').split(';',1)[0];
+  const save=(body,requestOrigin=origin)=>fetch(origin+'/api/admin/credentials',{method:'PATCH',headers:{'Content-Type':'application/json',Cookie:newCookie,Origin:requestOrigin},body:JSON.stringify(body)});
+  const onlyLogin={login:'Nikita.test',currentPassword:'NewPassword456!',newPassword:'',repeatPassword:''};
+  assert.equal((await save(onlyLogin,'https://another.example')).status,403);
+  assert.equal((await save({...onlyLogin,currentPassword:'incorrect'})).status,401);
+  assert.equal((await save({...onlyLogin,login:'<script>'})).status,400);
+  assert.equal((await save({...onlyLogin,newPassword:'bad',repeatPassword:'bad'})).status,400);
+  assert.equal((await save(onlyLogin)).status,200);
+  assert.equal((await fetch(origin+'/api/status',{headers:{Cookie:newCookie}})).status,401);
+  assert.equal((await login('NewPassword456!')).status,401);
+  const namedLogin=()=>fetch(origin+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:'Nikita.test',password:'NewPassword456!'})});
+  assert.equal((await namedLogin()).status,200);
+  assert.equal(JSON.parse(fs.readFileSync(authPath,'utf8')).login,'Nikita.test');
+  // Restart reads the persisted login, not the original environment fallback.
+  delete require.cache[require.resolve('../app/server')];
+  const restarted=require('../app/server').listen(0,'127.0.0.1');
+  await once(restarted,'listening');
+  t.after(()=>new Promise(resolve=>restarted.close(resolve)));
+  const restartLogin=await fetch(`http://127.0.0.1:${restarted.address().port}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:'Nikita.test',password:'NewPassword456!'})});
+  assert.equal(restartLogin.status,200);
 });
