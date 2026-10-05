@@ -14,3 +14,19 @@ data/
 *.tar.xz
 traffic-history.json
 peer-notes.json
+
+# Client exports and local credentials must never be published.
+*.conf
+*.vpn
+nait-awg-backup*.json
+backup*.json
+.ssh/
+id_rsa
+id_ed25519
+id_ecdsa
+authorized_keys
+
+# Private verification fixtures live outside the public source tree.
+/tests/
+/test/
+/privacy-audit*/
