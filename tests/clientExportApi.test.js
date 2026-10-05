@@ -45,5 +45,14 @@ test('authenticated downloads select conf or vpn without changing stored client 
   const bad = await fetch(endpoint+'?format=other',{headers});
   assert.equal(bad.status,400); assert.equal((await bad.json()).code,'unsupported_client_format');
   assert.equal((await fetch(origin+'/api/peers/000000000000/config?format=amneziavpn',{headers})).status,404);
+  const qrEndpoint=origin+'/api/peers/aabbccddeeff/qr';
+  assert.equal((await fetch(qrEndpoint+'?format=amneziavpn')).status,401);
+  const qr=await fetch(qrEndpoint+'?format=amneziavpn',{headers});
+  assert.equal(qr.status,200);assert.equal(qr.headers.get('cache-control'),'no-store');
+  const series=await qr.json();assert.ok(series.frames.length>=1);assert.equal(series.format,'amneziavpn');
+  assert.ok(series.frames.every(frame=>frame.startsWith('data:image/svg+xml;base64,')));
+  const nativeQr=await fetch(qrEndpoint,{headers});assert.equal(nativeQr.status,200);assert.equal(nativeQr.headers.get('cache-control'),'no-store');assert.match(await nativeQr.text(),/<svg/);
+  assert.equal((await fetch(qrEndpoint+'?format=other',{headers})).status,400);
+  assert.equal((await fetch(origin+'/api/peers/000000000000/qr?format=amneziavpn',{headers})).status,404);
   assert.equal(db.prepare('SELECT encrypted_config FROM clients WHERE client_id=?').get('test-client').encrypted_config,encrypted);
 });

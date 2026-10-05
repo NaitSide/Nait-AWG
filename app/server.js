@@ -358,7 +358,14 @@ app.get('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try
 app.get('/api/peers/:fingerprint/usage', requireAuth, async (req, res) => { try { res.json(await panelService.getUsage(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
 app.post('/api/peers/:fingerprint/access', requireAuth, async (req, res) => { try { res.json(await panelService.setPeerAccess(req.params.fingerprint, req.body?.enabled)); } catch (error) { sendError(res, error); } });
 app.get('/api/peers/:fingerprint/config', requireAuth, async (req, res) => { try { const { client, config, extension } = await panelService.getClientExport(req.params.fingerprint, req.query.format); res.set('Cache-Control', 'no-store').type('text/plain').attachment(`${client.receiverLabel}.${extension}`).send(config); } catch (error) { sendError(res, error); } });
-app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => { try { res.type('image/svg+xml').send(await panelService.getQr(req.params.fingerprint)); } catch (error) { sendError(res, error); } });
+app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => {
+  try {
+    const qr=await panelService.getQr(req.params.fingerprint,req.query.format);
+    res.set('Cache-Control','no-store');
+    if(req.query.format==='amneziavpn')return res.json(qr);
+    return res.type('image/svg+xml').send(qr);
+  }catch(error){sendError(res,error);}
+});
 app.post('/api/peers/:fingerprint/config/import', requireAuth, parseClientConfigJson, async (req, res) => {
   const origin = req.get('origin');
   if (origin && origin !== `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`) {

@@ -25,7 +25,10 @@ function extractNativeConfig(input) {
     if (decoded.length !== compressed.readUInt32BE(0)) throw new Error();
     const guest = JSON.parse(decoded.toString('utf8'));
     // Accept a single guest connection, never an app backup or SSH credentials.
-    if (guest.userName || guest.password || !Array.isArray(guest.containers) || guest.containers.length !== 1) throw new Error();
+    if (!guest || typeof guest!=='object' || Array.isArray(guest) || guest.userName || guest.password
+      || Object.hasOwn(guest,'servers') || (guest.format_version!==undefined && guest.format_version!==1)
+      || !Array.isArray(guest.containers) || guest.containers.length !== 1) throw new Error();
+    if (!['amnezia-awg','amnezia-awg2'].includes(guest.containers[0]?.container)) throw new Error();
     const awg = guest.containers[0].awg;
     const config = typeof awg?.last_config === 'string' ? JSON.parse(awg.last_config) : awg?.last_config;
     if (typeof config?.config !== 'string' || Buffer.byteLength(config.config) > MAX_CONFIG_BYTES) throw new Error();
@@ -38,7 +41,7 @@ function extractNativeConfig(input) {
 
 function parseClientConfig(input, parameterNames, { nativeOnly = false } = {}) {
   if (nativeOnly && typeof input === 'string' && input.replace(/^\uFEFF/, '').trim().startsWith('vpn://')) {
-    throw invalid('native_config_required', 'Выберите исходный .conf для приложения AmneziaWG. Формат AmneziaVPN пока не поддерживается.');
+    throw invalid('native_config_required', 'Для этой операции нужен исходный .conf AmneziaWG.');
   }
   const text = extractNativeConfig(input);
   if (!text || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) {

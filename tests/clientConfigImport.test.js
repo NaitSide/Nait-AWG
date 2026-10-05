@@ -157,13 +157,30 @@ test('concurrent AWG edits abort import before saving client secrets', async () 
   } finally { await item.close(); }
 });
 
-test('native-only import rejects AmneziaVPN data even when named .conf', async () => {
+test('guest VPN import is validated by contents, not filename, and preserves existing access', async () => {
   const item = await fixture();
   try {
-    await assert.rejects(item.service.importClientConfig(fingerprint, { config: vpnExport(), fileName: 'client.conf' }), { code: 'native_config_required' });
     await assert.rejects(item.service.importClientConfig(fingerprint, { config: '{"backup":true}', fileName: 'client.conf' }), { code: 'invalid_client_config' });
     assert.equal((await item.service.listPeers())[0].hasConfig, false);
+    await item.service.importClientConfig(fingerprint,{config:vpnExport(),fileName:'client.conf'});
+    assert.equal((await item.service.getConfig(fingerprint)).config,nativeConfig);
+    assert.deepEqual(await item.service.readPeerAccess(fingerprint),{state:'on',address:'10.8.1.2/32'});
+    assert.ok(item.state.calls.every(call=>call.method==='GET'||call.url==='/awg/gates/read'));
   } finally { await item.close(); }
+});
+test('VPN admin access, another protocol, unknown format and backup data never enter the store',async()=>{
+  const item=await fixture();
+  try{
+    for(const config of [vpnExport({password:'ssh-secret'}),vpnExport({servers:[]}),vpnExport({format_version:2}),
+      vpnExport({containers:[{container:'amnezia-openvpn',awg:{last_config:JSON.stringify({config:nativeConfig})}}]})]){
+      await assert.rejects(item.service.importClientConfig(fingerprint,{config}),{code:'invalid_client_export'});
+    }
+    const other=keyPair();
+    const bytes=Buffer.from(JSON.stringify({containers:[{container:'amnezia-awg2',awg:{last_config:JSON.stringify({config:nativeConfig.replace(client.privateKey,other.privateKey)})}}]}));
+    const size=Buffer.alloc(4);size.writeUInt32BE(bytes.length);
+    await assert.rejects(item.service.importClientConfig(fingerprint,{config:'vpn://'+Buffer.concat([size,deflateSync(bytes)]).toString('base64url')}),{code:'client_key_mismatch'});
+    assert.equal((await item.service.listPeers())[0].hasConfig,false);
+  }finally{await item.close();}
 });
 
 test('valid native contents are accepted independently of filename', async () => {
