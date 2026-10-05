@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 # Download Nait-AWG when piped from GitHub, or install it from a local checkout.
-# Add the panel to an existing AmneziaVPN Self-hosted AWG 3.1 node.
-# This script never starts, stops, restarts, creates or replaces the AWG container.
+# Add a panel to existing AWG 3.1 or bootstrap both components on a fresh VPS.
+# Modes install/update never restart AWG. Mode full creates AWG only on a clean VPS.
 set -Eeuo pipefail
 
-if [[ "${1:-}" != install && "${1:-}" != update && "${1:-}" != audit && "${1:-}" != reset-auth ]]; then
-  [[ $# -eq 0 ]] || { printf 'Использование: sudo bash install.sh [audit|install|update|reset-auth]\n' >&2; exit 2; }
+if [[ "${1:-}" != install && "${1:-}" != full && "${1:-}" != update && "${1:-}" != audit && "${1:-}" != reset-auth ]]; then
+  [[ $# -eq 0 ]] || { printf 'Использование: sudo bash install.sh [audit|install|full|update|reset-auth]\n' >&2; exit 2; }
   [[ "${EUID}" -eq 0 ]] || { printf 'Запустите через sudo.\n' >&2; exit 1; }
   command -v curl >/dev/null 2>&1 || { printf 'Нужен curl.\n' >&2; exit 1; }
   command -v tar >/dev/null 2>&1 || { printf 'Нужен tar.\n' >&2; exit 1; }
 
   requested_action="${NAIT_AWG_ACTION:-}"
   if [[ -z "$requested_action" ]]; then
-    [[ -r /dev/tty ]] || { printf 'Интерактивное меню недоступно. Укажите NAIT_AWG_ACTION=install, update или reset-auth.\n' >&2; exit 1; }
+    [[ -r /dev/tty ]] || { printf 'Интерактивное меню недоступно. Укажите NAIT_AWG_ACTION=install, full, update или reset-auth.\n' >&2; exit 1; }
     printf '\nВыберите действие:\n' >&2
     printf '  1) Установить только веб-панель Nait-AWG\n' >&2
-    printf '  2) Установить AmneziaWG 3.1 + веб-панель Nait-AWG — (в разработке)\n' >&2
+    printf '  2) Установить AmneziaWG 3.1 + веб-интерфейс Nait-AWG\n' >&2
     printf '  3) Обновить веб-интерфейс Nait-AWG\n' >&2
     printf '  4) Сбросить логин и пароль\n\n' >&2
     read -r -p 'Введите номер [1-4]: ' requested_action </dev/tty
   fi
   case "$requested_action" in
     1|install) requested_action=install ;;
-    2|full) printf 'Этот режим пока находится в разработке. Сервер не изменён.\n' >&2; exit 0 ;;
+    2|full) requested_action=full ;;
     3|update) requested_action=update ;;
     4|reset-auth) requested_action=reset-auth ;;
     *) printf 'Неизвестный вариант. Выберите 1, 2, 3 или 4.\n' >&2; exit 2 ;;
@@ -90,6 +90,7 @@ reset_had_auth=false
 reset_snapshot_ready=false
 reset_stopped=false
 reset_committed=false
+full_runtime_ready=false
 
 fail() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*" >&2; }
@@ -126,6 +127,7 @@ rollback_update() {
   note "Предыдущая версия возвращена. Диагностические файлы сохранены: $update_backup"
 }
 cleanup() {
+  local install_exit_code=$?
   if ! rollback_reset; then
     note 'Не удалось вернуть прежние реквизиты. Веб-панель оставлена остановленной; проверьте службу и временную копию.'
     systemctl stop "$PANEL_UNIT" || true
@@ -134,6 +136,14 @@ cleanup() {
   fi
   rollback_update
   if [[ "$stage" == /tmp/nait-awg.* && -d "$stage" ]]; then rm -rf -- "$stage"; fi
+  if [[ "$full_runtime_ready" == true && "$install_exit_code" -ne 0 ]]; then
+    note 'AWG уже установлен. Его контейнер и ключи сохранены в /opt/naitlab/nait_awg_runtime.'
+    if [[ ! -e "$INSTALL_DIR" ]]; then
+      note 'После устранения ошибки выберите пункт 1 — установить панель на существующий AWG. Пункт 2 повторно не запускайте.'
+    else
+      note 'Панель установлена частично. Проверьте службы nait-awg-selfhost и nait-awg-receiver-selfhost; существующие файлы автоматически не заменяем.'
+    fi
+  fi
 }
 trap cleanup EXIT
 
@@ -179,12 +189,42 @@ fi
 # shellcheck disable=SC1091
 . /etc/os-release
 [[ "${ID:-}" == ubuntu && "${VERSION_ID:-}" == 24.04 ]] || fail 'Only Ubuntu 24.04 is supported by this installer.'
+if [[ "${1:-}" != audit ]]; then
+  command -v flock >/dev/null 2>&1 || fail 'Для безопасной установки нужен flock (пакет util-linux).'
+  exec 9>/run/nait-awg-install.lock
+  flock -n 9 || fail 'Другой установщик Nait-AWG уже работает. Дождитесь его завершения.'
+fi
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+if [[ "${1:-}" == full ]]; then
+  [[ -f "$SOURCE_DIR/scripts/install-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/start-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/fresh-awg-config.js" ]] || fail 'В исходниках отсутствует полный установщик AWG.'
+  bash "$SOURCE_DIR/scripts/install-fresh-awg.sh" check
+  note ''
+  note '============================================================'
+  note 'Установка AmneziaWG 3.1 + веб-интерфейс Nait-AWG'
+  note ''
+  note 'Используется официальный образ AmneziaWG 3.1 от'
+  note 'разработчиков Amnezia — тот же VPN-движок, что и при'
+  note 'установке через AmneziaVPN.'
+  note ''
+  note 'Установщик настроит VPN на сервере и добавит'
+  note 'веб-интерфейс для управления пользователями.'
+  note 'Всё за один запуск, без предварительной установки'
+  note 'через приложение.'
+  note '============================================================'
+  note ''
+  if [[ -r /dev/tty ]]; then
+    read -r -p 'Нажмите Enter, чтобы продолжить (Ctrl+C — отмена): ' confirmation </dev/tty || fail 'Продолжение не подтверждено. Установка отменена.'
+  else
+    [[ "${NAIT_AWG_ACCEPT_FRESH:-}" == 1 ]] || fail 'Для автоматической установки укажите NAIT_AWG_ACCEPT_FRESH=1.'
+  fi
+  bash "$SOURCE_DIR/scripts/install-fresh-awg.sh" prepare
+fi
 for command_name in docker curl openssl tar xz sha256sum systemctl ss getent useradd groupadd usermod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Missing command: $command_name"
 done
 [[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
 
-if [[ "${1:-}" == install ]]; then
+if [[ "${1:-}" == install || "${1:-}" == full ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "Nait-AWG уже установлен: $INSTALL_DIR. Повторная установка остановлена; файлы не изменены."
   [[ ! -e "/etc/systemd/system/$PANEL_UNIT" && ! -e "/etc/systemd/system/$RECEIVER_UNIT" ]] || fail 'Обнаружены службы Nait-AWG. Повторная установка остановлена; проверьте существующую установку.'
   [[ -z "$(ss -H -ltn '( sport = :42842 )')" ]] || fail 'Внутренний TCP-порт 42842 уже занят. Проверьте, не установлен ли Nait-AWG.'
@@ -192,7 +232,7 @@ elif [[ "${1:-}" == update ]]; then
   [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" && -f "$INSTALL_DIR/receiver/.env" ]] || fail 'Рабочая установка Nait-AWG не найдена или повреждена. Обновление остановлено.'
   [[ -f "/etc/systemd/system/$PANEL_UNIT" && -f "/etc/systemd/system/$RECEIVER_UNIT" ]] || fail 'Службы Nait-AWG не найдены. Обновление остановлено.'
 elif [[ "${1:-}" != audit ]]; then
-  printf 'Использование: sudo bash install.sh [audit|install|update|reset-auth]\n' >&2
+  printf 'Использование: sudo bash install.sh [audit|install|full|update|reset-auth]\n' >&2
   exit 2
 fi
 
@@ -211,6 +251,65 @@ tar -xJf "$stage/$NODE_ARCHIVE" -C "$stage"
 node="$stage/node-v24.20.0-linux-x64/bin/node"
 npm="$stage/node-v24.20.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js"
 [[ -x "$node" && -f "$npm" ]] || fail 'Node archive is incomplete.'
+
+collect_install_options() {
+  public_endpoint="${NAIT_AWG_PUBLIC_ENDPOINT:-}"
+  if [[ -z "$public_endpoint" && -r /dev/tty ]]; then
+    detected_endpoint="$("$node" "$SOURCE_DIR/scripts/detect-public-ipv4.js")"
+    if [[ -n "$detected_endpoint" ]]; then
+      read -r -p "Публичный IPv4 сервера [$detected_endpoint] (Enter — принять): " public_endpoint </dev/tty
+      public_endpoint="${public_endpoint:-$detected_endpoint}"
+    else
+      read -r -p 'Введите публичный IPv4 сервера: ' public_endpoint </dev/tty
+    fi
+  fi
+  [[ "$public_endpoint" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || fail 'Set NAIT_AWG_PUBLIC_ENDPOINT to a public IPv4 address.'
+  IFS=. read -r octet1 octet2 octet3 octet4 <<< "$public_endpoint"
+  for octet in "$octet1" "$octet2" "$octet3" "$octet4"; do
+    (( 10#$octet <= 255 )) || fail 'Invalid public IPv4 address.'
+  done
+  panel_port="${NAIT_AWG_PANEL_PORT:-}"
+  if [[ -z "$panel_port" ]]; then
+    suggested_panel_port=''
+    for attempt in {1..40}; do
+      candidate_port="$("$node" -e 'process.stdout.write(String(require("node:crypto").randomInt(20000, 60001)))')"
+      if [[ "$candidate_port" != 42842 && -z "$(ss -H -ltn "( sport = :$candidate_port )")" ]]; then
+        suggested_panel_port="$candidate_port"; break
+      fi
+    done
+    [[ -n "$suggested_panel_port" ]] || fail 'Не удалось подобрать свободный порт для панели.'
+    if [[ -r /dev/tty ]]; then
+      read -r -p "Порт веб-панели [$suggested_panel_port] (Enter — принять): " panel_port </dev/tty
+      panel_port="${panel_port:-$suggested_panel_port}"
+    else
+      fail 'Укажите порт панели через NAIT_AWG_PANEL_PORT.'
+    fi
+  fi
+  [[ "$panel_port" =~ ^[0-9]{1,5}$ ]] || fail 'Порт панели должен быть числом от 1024 до 65535.'
+  panel_port=$((10#$panel_port))
+  (( panel_port >= 1024 && panel_port <= 65535 )) || fail 'Порт панели должен быть числом от 1024 до 65535.'
+  [[ "$panel_port" != 42842 ]] || fail 'Порт 42842 зарезервирован для внутреннего сервиса.'
+  [[ -z "$(ss -H -ltn "( sport = :$panel_port )")" ]] || fail "TCP-порт $panel_port уже занят. Запустите установку заново и выберите другой."
+}
+if [[ "${1:-}" == full ]]; then
+  collect_install_options
+  awg_port="${NAIT_AWG_VPN_PORT:-}"
+  if [[ -z "$awg_port" ]]; then
+    suggested_awg_port=55424
+    for attempt in {1..40}; do
+      if [[ -z "$(ss -H -lun "( sport = :$suggested_awg_port )")" ]]; then break; fi
+      suggested_awg_port="$("$node" -e 'process.stdout.write(String(require("node:crypto").randomInt(20000, 60001)))')"
+    done
+    if [[ -r /dev/tty ]]; then
+      read -r -p "UDP-порт AmneziaWG [$suggested_awg_port] (Enter — принять): " awg_port </dev/tty
+      awg_port="${awg_port:-$suggested_awg_port}"
+    else
+      awg_port="$suggested_awg_port"
+    fi
+  fi
+  bash "$SOURCE_DIR/scripts/install-fresh-awg.sh" install "$node" "$awg_port"
+  full_runtime_ready=true
+fi
 
 note 'Ищем контейнер AmneziaWG и проверяем его настройки...'
 IFS=$'\t' read -r awg_container awg_subnet awg_started_at < <("$node" "$SOURCE_DIR/scripts/selfhost-preflight.js" --machine)
@@ -297,44 +396,7 @@ if [[ "${1:-}" == update ]]; then
   exit 0
 fi
 
-public_endpoint="${NAIT_AWG_PUBLIC_ENDPOINT:-}"
-if [[ -z "$public_endpoint" && -r /dev/tty ]]; then
-  detected_endpoint="$("$node" "$SOURCE_DIR/scripts/detect-public-ipv4.js")"
-  if [[ -n "$detected_endpoint" ]]; then
-    read -r -p "Публичный IPv4 сервера [$detected_endpoint] (Enter — принять): " public_endpoint </dev/tty
-    public_endpoint="${public_endpoint:-$detected_endpoint}"
-  else
-    read -r -p 'Введите публичный IPv4 сервера: ' public_endpoint </dev/tty
-  fi
-fi
-[[ "$public_endpoint" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || fail 'Set NAIT_AWG_PUBLIC_ENDPOINT to a public IPv4 address.'
-IFS=. read -r octet1 octet2 octet3 octet4 <<< "$public_endpoint"
-for octet in "$octet1" "$octet2" "$octet3" "$octet4"; do
-  (( 10#$octet <= 255 )) || fail 'Invalid public IPv4 address.'
-done
-panel_port="${NAIT_AWG_PANEL_PORT:-}"
-if [[ -z "$panel_port" ]]; then
-  suggested_panel_port=''
-  for attempt in {1..40}; do
-    candidate_port="$("$node" -e 'process.stdout.write(String(require("node:crypto").randomInt(20000, 60001)))')"
-    if [[ "$candidate_port" != 42842 && -z "$(ss -H -ltn "( sport = :$candidate_port )")" ]]; then
-      suggested_panel_port="$candidate_port"
-      break
-    fi
-  done
-  [[ -n "$suggested_panel_port" ]] || fail 'Не удалось подобрать свободный порт для панели.'
-  if [[ -r /dev/tty ]]; then
-    read -r -p "Порт веб-панели [$suggested_panel_port] (Enter — принять): " panel_port </dev/tty
-    panel_port="${panel_port:-$suggested_panel_port}"
-  else
-    fail 'Укажите порт панели через NAIT_AWG_PANEL_PORT.'
-  fi
-fi
-[[ "$panel_port" =~ ^[0-9]{1,5}$ ]] || fail 'Порт панели должен быть числом от 1024 до 65535.'
-panel_port=$((10#$panel_port))
-(( panel_port >= 1024 && panel_port <= 65535 )) || fail 'Порт панели должен быть числом от 1024 до 65535.'
-[[ "$panel_port" != 42842 ]] || fail 'Порт 42842 зарезервирован для внутреннего сервиса.'
-[[ -z "$(ss -H -ltn "( sport = :$panel_port )")" ]] || fail "TCP-порт $panel_port уже занят. Запустите установку заново и выберите другой."
+if [[ "${1:-}" != full ]]; then collect_install_options; fi
 admin_password="$("$node" "$SOURCE_DIR/scripts/admin-credentials.js" generate)" || fail 'Не удалось сгенерировать пароль администратора.'
 
 # Recheck before writing; a running VPN is not sufficient if its config/profile is stale.
@@ -459,4 +521,7 @@ note "Готово: https://$public_endpoint:$panel_port/ (самоподпис�
 note 'Логин панели: admin'
 note "Пароль: $admin_password"
 note '(Сохраните пароль и не забудьте сменить его в настройках.)'
-note 'VPN не перезапускали. Если панель недоступна, проверьте сетевой экран хостинга.'
+if [[ "${1:-}" == full ]]; then
+  note "AmneziaWG 3.1 установлен: UDP-порт $awg_port. Выдайте первый доступ в веб-панели."
+fi
+note 'После запуска VPN не перезапускали. Если подключение недоступно, проверьте TCP-порт панели и UDP-порт VPN в сетевом экране хостинга.'

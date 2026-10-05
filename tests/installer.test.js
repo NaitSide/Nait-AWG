@@ -9,12 +9,14 @@ const root = path.join(__dirname, '..');
 const installer = fs.readFileSync(path.join(root, 'install.sh'), 'utf8');
 const loginPage = fs.readFileSync(path.join(root, 'app', 'public', 'index.html'), 'utf8');
 
-test('installer exposes install, future full install, update and credential reset modes', () => {
+test('installer exposes install, fresh full install, update and credential reset modes', () => {
   assert.match(installer, /1\) Установить только веб-панель Nait-AWG/);
-  assert.match(installer, /2\) Установить AmneziaWG 3\.1 \+ веб-панель Nait-AWG — \(в разработке\)/);
+  assert.match(installer, /2\) Установить AmneziaWG 3\.1 \+ веб-интерфейс Nait-AWG/);
+  assert.doesNotMatch(installer, /в разработке/);
   assert.match(installer, /3\) Обновить веб-интерфейс Nait-AWG/);
   assert.match(installer, /4\) Сбросить логин и пароль/);
   assert.match(installer, /1\|install\) requested_action=install/);
+  assert.match(installer, /2\|full\) requested_action=full/);
   assert.match(installer, /3\|update\) requested_action=update/);
   assert.match(installer, /4\|reset-auth\) requested_action=reset-auth/);
 });
