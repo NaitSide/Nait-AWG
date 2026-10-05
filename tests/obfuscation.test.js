@@ -82,6 +82,14 @@ test('settings have grouped hints, guarded editing and the shared favicon set',(
   const html=renderPanel({peers:[],profile:{status:'ok',protocolVersion:'3.1',clientInterfaceParameters:valid}});
   for(const group of rules.groups)assert.ok(html.includes(group.title));
   assert.match(html,/id="obfuscationToggle"/);assert.match(html,/data-obfuscation-help/);
+  const infoIcons=[...html.matchAll(/class="obfuscation-info"[^>]*>(.*?)<\/button>/g)].map(match=>match[1]);
+  assert.equal(infoIcons.length,rules.names.length);
+  assert.equal(new Set(infoIcons).size,1);
+  assert.match(infoIcons[0],/width="18" height="18"/);
+  assert.match(infoIcons[0],/stroke-width="1\.333333"/);
+  assert.match(infoIcons[0],/<circle cx="12" cy="12" r="10" stroke-width="1\.066667"\/>/);
+  assert.match(infoIcons[0],/y1="12" y2="16"/);
+  assert.match(infoIcons[0],/y1="8" y2="8"/);
   assert.match(html,/id="obfuscationConfirmConsent"/);
   assert.match(html,/id="adminAccessLogin"[^>]*disabled/);
   assert.match(html,/id="adminPasswordSubmit"[^>]*>Сохранить/);
