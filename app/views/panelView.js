@@ -22,7 +22,13 @@ const icons = {
 };
 const logo = '<svg viewBox="0 0 1024 1024" aria-hidden="true"><polygon points="455,270 735,733 358,733 301,826 907,826 512,173"/><polygon points="232,826 483,410 427,315 118,826"/><polygon points="393,675.7 632.3,675.7 512.7,479.7"/></svg>';
 function initials(label) {
-  return String(label || '').split(/[\s_.-]+/).filter(Boolean).slice(0,2).map(p => p[0]).join('').toUpperCase() || '—';
+  const name = String(label ?? '').normalize('NFC');
+  const words = name.match(/\p{L}[\p{L}\p{M}]*/gu) || [];
+  if (words.length) {
+    const letters = words.slice(0, 2).map(word => Array.from(word)[0]).join('').toUpperCase();
+    return Array.from(letters).slice(0, 2).join('');
+  }
+  return (name.match(/\p{Nd}/gu) || []).slice(0, 2).join('') || '?';
 }
 function bytes(value) {
   const units = ['B','KB','MB','GB','TB'];
