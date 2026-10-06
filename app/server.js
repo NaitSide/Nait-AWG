@@ -12,6 +12,7 @@ const { version: appVersion } = require('../package.json');
 const { createHttpError, createAwgService } = require('./services/awgService');
 const { getLatestAwgToolsRelease, getLatestNaitAwgVersion } = require('./services/releaseService');
 const { renderPanel: renderAwgPanel } = require('./views/panelView');
+const { createLoginLimiter, connectionAddress } = require('./services/loginProtection');
 
 const app = express();
 const host = process.env.HOST || '127.0.0.1';
@@ -52,6 +53,31 @@ function loadAdminAuthState() {
 let adminAuthState = loadAdminAuthState();
 
 app.disable('x-powered-by');
+app.set('trust proxy', false);
+const loginLimiter = createLoginLimiter();
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'");
+  next();
+});
+// Cover every mutation, including form login/logout and future routes, before parsing bodies.
+app.use((req, res, next) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
+  ? requireSameOrigin(req, res, next) : next());
+app.use((req, res, next) => {
+  if (req.method !== 'POST' || !['/login', '/api/login'].includes(req.path.toLowerCase().replace(/\/$/, ''))) return next();
+  const attempt = loginLimiter.take(connectionAddress(req));
+  if (attempt.allowed) return next();
+  res.setHeader('Retry-After', String(attempt.retryAfter));
+  const message = `Слишком много попыток входа. Повторите через ${attempt.retryAfter} сек.`;
+  if (req.path.toLowerCase().startsWith('/api/')) return res.status(429).json({ code: 'login_rate_limited', message });
+  const page = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+    .replace('<p class="form-error" id="loginError" aria-live="polite"></p>',
+      `<p class="form-error" id="loginError" aria-live="polite">${message}</p>`);
+  return res.status(429).type('html').send(page);
+});
 const standardJsonParser = express.json({ limit: '32kb' });
 const restoreJsonParser = express.json({ limit: '40mb' });
 const clientConfigJsonParser = express.json({ limit: '512kb' });
@@ -70,12 +96,6 @@ app.use((req, res, next) => {
   return standardJsonParser(req, res, next);
 });
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Cache-Control', 'no-store');
-  next();
-});
 
 function sign(value) {
   return crypto.createHmac('sha256', sessionSecret).update(value).digest('base64url');
@@ -94,6 +114,7 @@ function createPasswordHash(password) {
 }
 
 function passwordMatches(password) {
+  if (typeof password !== 'string' || !password.length || password.length > 256) return false;
   if (!adminAuthState.passwordHash) return stringsMatch(password, adminPassword);
   const [algorithm, encodedSalt, encodedDigest] = adminAuthState.passwordHash.split('$');
   if (algorithm !== 'scrypt' || !encodedSalt || !encodedDigest) return false;
@@ -128,7 +149,7 @@ async function saveAdminCredentials(login, password) {
 }
 
 function readCookies(header) {
-  const cookies = {};
+  const cookies = Object.create(null);
   for (const part of String(header || '').split(';')) {
     const separator = part.indexOf('=');
     if (separator < 1) continue;
@@ -139,11 +160,16 @@ function readCookies(header) {
 
 function isAuthenticated(req) {
   const token = readCookies(req.headers.cookie).nait_awg_session;
-  const [expiresAt, sessionVersion, nonce, signature] = String(token || '').split('.');
-  if (!expiresAt || !sessionVersion || !nonce || !signature || Number(expiresAt) < Date.now()) return false;
-  if (Number(sessionVersion) !== adminAuthState.sessionVersion) return false;
+  if (typeof token !== 'string' || token.length > 200) return false;
+  const parts = token.split('.');
+  if (parts.length !== 4) return false;
+  const [expiresAt, sessionVersion, nonce, signature] = parts;
+  if (!/^\d{1,16}$/.test(expiresAt) || !/^\d{1,16}$/.test(sessionVersion)
+    || !/^[A-Za-z0-9_-]{24}$/.test(nonce) || !/^[A-Za-z0-9_-]{43}$/.test(signature)) return false;
+  if (!Number.isSafeInteger(Number(expiresAt)) || Number(expiresAt) <= Date.now()) return false;
+  if (!Number.isSafeInteger(Number(sessionVersion)) || Number(sessionVersion) !== adminAuthState.sessionVersion) return false;
   const expected = sign(`${expiresAt}.${sessionVersion}.${nonce}`);
-  return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  return stringsMatch(signature, expected);
 }
 
 function requireAuth(req, res, next) {
@@ -164,7 +190,9 @@ function sendError(res, error) {
 }
 
 function credentialsMatch(body) {
-  return stringsMatch(body?.username ?? body?.login, adminAuthState.login) && passwordMatches(body?.password);
+  const login = body?.username ?? body?.login;
+  return typeof login === 'string' && login.length > 0 && login.length <= 64
+    && stringsMatch(login, adminAuthState.login) && passwordMatches(body?.password);
 }
 
 function issueSession(res) {
@@ -252,9 +280,6 @@ app.post('/logout', (_req, res) => { res.setHeader('Set-Cookie', `nait_awg_sessi
 app.get('/api/session', (req, res) => res.json({ authenticated: isAuthenticated(req) }));
 let adminCredentialsBusy = false;
 app.patch(['/api/admin/credentials', '/api/admin/password'], requireAuth, async (req, res) => {
-  const origin = req.get('origin');
-  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
-  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   const currentPassword = String(req.body?.currentPassword || '');
   const newPassword = String(req.body?.newPassword || '');
   const repeatPassword = String(req.body?.repeatPassword || '');
@@ -290,12 +315,19 @@ app.patch(['/api/admin/credentials', '/api/admin/password'], requireAuth, async 
 app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await panelService.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
 function requireSameOrigin(req,res,next){
   const origin=req.get('origin');
-  if(origin&&origin!==`${tlsEnabled?'https':'http'}://${req.get('host')}`)return res.status(403).json({code:'invalid_origin',message:'Недопустимый источник запроса.'});
+  let valid = req.get('sec-fetch-site') !== 'cross-site';
+  if (origin) {
+    try {
+      const expected = new URL(`${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`).origin;
+      valid = valid && new URL(origin).origin === expected && new URL(origin).origin === origin;
+    } catch { valid = false; }
+  }
+  if(!valid)return res.status(403).json({code:'invalid_origin',message:'Недопустимый источник запроса.'});
   next();
 }
 app.get('/api/obfuscation',requireAuth,async(_req,res)=>{try{res.json(await panelService.getObfuscation());}catch(error){sendError(res,error);}});
 for(const [route,method] of [['generate','generateObfuscation'],['inspect','inspectObfuscation'],['apply','setObfuscation']]){
-  app.post('/api/obfuscation/'+route,requireAuth,requireSameOrigin,async(req,res)=>{
+  app.post('/api/obfuscation/'+route,requireAuth,async(req,res)=>{
     try{res.json(await panelService[method](req.body));}catch(error){sendError(res,error);}
   });
 }
@@ -323,9 +355,6 @@ app.get('/api/versions/latest', requireAuth, async (_req, res) => {
   return res.json(payload);
 });
 app.post('/api/backup', requireAuth, async (req, res) => {
-  const origin = req.get('origin');
-  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
-  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   try {
     const backup = await panelService.createBackup(req.body?.passphrase);
     const stamp = backup.createdAt.replace(/[:.]/g, '-');
@@ -334,16 +363,10 @@ app.post('/api/backup', requireAuth, async (req, res) => {
   } catch (error) { return sendError(res, error); }
 });
 app.post('/api/restore/inspect', requireAuth, restoreJsonParser, async (req, res) => {
-  const origin = req.get('origin');
-  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
-  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   try { return res.json(await panelService.inspectBackup(req.body?.backup, req.body?.passphrase)); }
   catch (error) { return sendError(res, error); }
 });
 app.post('/api/restore', requireAuth, restoreJsonParser, async (req, res) => {
-  const origin = req.get('origin');
-  const expectedOrigin = `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`;
-  if (origin && origin !== expectedOrigin) return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
   if (req.body?.confirmed !== true) return res.status(400).json({ code: 'restore_not_confirmed', message: 'Подтвердите замену текущих данных.' });
   if (req.body?.restoreObfuscation !== undefined && typeof req.body.restoreObfuscation !== 'boolean') {
     return res.status(400).json({ code: 'invalid_restore_option', message: 'Некорректный выбор параметров обфускации.' });
@@ -367,10 +390,6 @@ app.get('/api/peers/:fingerprint/qr', requireAuth, async (req, res) => {
   }catch(error){sendError(res,error);}
 });
 app.post('/api/peers/:fingerprint/config/import', requireAuth, parseClientConfigJson, async (req, res) => {
-  const origin = req.get('origin');
-  if (origin && origin !== `${tlsEnabled ? 'https' : 'http'}://${req.get('host')}`) {
-    return res.status(403).json({ code: 'invalid_origin', message: 'Недопустимый источник запроса.' });
-  }
   try { res.json(await panelService.importClientConfig(req.params.fingerprint, req.body)); }
   catch (error) { sendError(res, error); }
 });
@@ -408,6 +427,18 @@ app.post('/panel/peers/:fingerprint/delete', requirePageAuth, async (req, res) =
 app.get('/', (req, res, next) => { if (isAuthenticated(req)) return res.redirect(303, '/panel'); return next(); });
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html' }));
 app.use((_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.use((error, _req, res, next) => {
+  if (res.headersSent) return next(error);
+  // Never echo parser input, private config material, stack traces or filesystem paths.
+  const status = error.type === 'entity.too.large' ? 413
+    : error.type === 'entity.parse.failed' || error.status === 400 ? 400
+    : error.status === 415 ? 415 : 500;
+  const code = status === 413 ? 'request_too_large' : status === 400 ? 'invalid_request'
+    : status === 415 ? 'unsupported_encoding' : 'internal_error';
+  if (status === 500) console.error('[nait-awg]', code);
+  return res.status(status).json({ code, message: status === 413 ? 'Запрос слишком большой.'
+    : status < 500 ? 'Некорректный запрос.' : 'Внутренняя ошибка панели.' });
+});
 
 if (require.main === module) {
   const server = tlsEnabled

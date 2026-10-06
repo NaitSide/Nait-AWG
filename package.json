@@ -7,11 +7,11 @@
   "scripts": {
     "start": "node app/server.js",
     "check:fresh-config": "node --check scripts/fresh-awg-config.js",
-    "check": "node --check scripts/admin-credentials.js && node --check app/server.js && node --check app/services/awgService.js && node --check app/services/clientConfigService.js && node --check app/services/clientExportService.js && node --check app/services/clientQrService.js && node --check app/services/backupService.js && node --check app/services/releaseService.js && node --check app/services/usageService.js && node --check app/services/obfuscationService.js && node --check app/services/obfuscationRules.js && node --check app/views/panelView.js && node --check app/views/obfuscationView.js && node --check app/public/panel.js && node --check app/public/obfuscation.js"
+    "check": "node --check scripts/admin-credentials.js && node --check app/services/loginProtection.js && node --check app/server.js && node --check app/services/awgService.js && node --check app/services/clientConfigService.js && node --check app/services/clientExportService.js && node --check app/services/clientQrService.js && node --check app/services/backupService.js && node --check app/services/releaseService.js && node --check app/services/usageService.js && node --check app/services/obfuscationService.js && node --check app/services/obfuscationRules.js && node --check app/views/panelView.js && node --check app/views/obfuscationView.js && node --check app/public/panel.js && node --check app/public/obfuscation.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "qrcode": "^1.5.4"
+    "dotenv": "16.6.1",
+    "express": "4.22.3",
+    "qrcode": "1.5.4"
   }
 }

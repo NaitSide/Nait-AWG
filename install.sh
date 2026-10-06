@@ -194,7 +194,7 @@ if [[ "${1:-}" != audit ]]; then
   exec 9>/run/nait-awg-install.lock
   flock -n 9 || fail 'Другой установщик Nait-AWG уже работает. Дождитесь его завершения.'
 fi
-[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
 if [[ "${1:-}" == full ]]; then
   [[ -f "$SOURCE_DIR/scripts/install-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/start-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/fresh-awg-config.js" ]] || fail 'В исходниках отсутствует полный установщик AWG.'
   bash "$SOURCE_DIR/scripts/install-fresh-awg.sh" check
@@ -222,7 +222,7 @@ fi
 for command_name in docker curl openssl tar xz sha256sum systemctl ss getent useradd groupadd usermod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Missing command: $command_name"
 done
-[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
 
 if [[ "${1:-}" == install || "${1:-}" == full ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "Nait-AWG уже установлен: $INSTALL_DIR. Повторная установка остановлена; файлы не изменены."
@@ -329,13 +329,13 @@ if [[ "${1:-}" == audit ]]; then exit 0; fi
 if [[ "${1:-}" == update ]]; then
   note 'Готовим обновление веб-панели. Пользователи, пароль и настройки будут сохранены...'
   install -d -m 0750 "$stage/receiver" "$stage/runtime"
-  cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$stage/"
+  cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$SOURCE_DIR/package-lock.json" "$stage/"
   cp -R -- "$SOURCE_DIR/vendor/receiver/." "$stage/receiver/"
   cp -R -- "$stage/node-v24.20.0-linux-x64/." "$stage/runtime/"
   note 'Устанавливаем библиотеки веб-панели...'
-  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" install --prefix "$stage" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
   note 'Устанавливаем библиотеки внутреннего сервиса...'
-  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
   rm -f -- "$stage/$NODE_ARCHIVE"
   rm -rf -- "$stage/node-v24.20.0-linux-x64"
   chown -R root:root "$stage/app" "$stage/runtime" "$stage/receiver" "$stage/package.json"
@@ -406,13 +406,13 @@ admin_password="$("$node" "$SOURCE_DIR/scripts/admin-credentials.js" generate)" 
 note 'Устанавливаем панель. Контейнер VPN перезапускать не будем...'
 install -d -m 0755 /opt/naitlab
 install -d -m 0750 "$stage/receiver" "$stage/data" "$stage/tls" "$stage/runtime"
-cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$stage/"
+cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$SOURCE_DIR/package-lock.json" "$stage/"
 cp -R -- "$SOURCE_DIR/vendor/receiver/." "$stage/receiver/"
 cp -R -- "$stage/node-v24.20.0-linux-x64/." "$stage/runtime/"
 note 'Устанавливаем библиотеки веб-панели...'
-PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" install --prefix "$stage" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
 note 'Устанавливаем библиотеки внутреннего сервиса...'
-PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --no-audit --no-fund --no-update-notifier --loglevel=error
+PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
 rm -f -- "$stage/$NODE_ARCHIVE"
 rm -rf -- "$stage/node-v24.20.0-linux-x64"
 
