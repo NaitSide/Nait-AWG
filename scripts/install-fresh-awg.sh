@@ -56,7 +56,7 @@ if [[ "$1" == prepare ]]; then
   fi
   [[ -c /dev/net/tun ]] || modprobe tun
   [[ -c /dev/net/tun ]] || fail 'TUN недоступен. Проверьте ограничения виртуализации у провайдера.'
-  run_logged 'Запускаем Docker...' systemctl enable --now docker
+  run_logged 'Подготавливаем Docker...' systemctl enable --now docker
   docker info >/dev/null
   exit 0
 fi
@@ -70,8 +70,7 @@ port_free -lun "$port" || fail "UDP-порт $port занят."
 ip -j -4 route show table all | "$node" "$SOURCE_DIR/scripts/fresh-awg-config.js" routes || fail 'Подсеть 10.8.1.0/24 пересекается с существующим маршрутом или маршруты недоступны.'
 
 load_awg_image
-tools_version="$(docker run --pull=never --rm --network none --entrypoint awg "$IMAGE" --version)"
-[[ "$tools_version" == 'amneziawg-tools v3.1.20260812' ]] || fail 'Официальный образ не содержит ожидаемый AWG 3.1.'
+verify_awg_tools
 # Recheck after loading, before generating or persisting any node state.
 assert_fresh
 check_result="$(ss -H -lun "( sport = :$port )")"

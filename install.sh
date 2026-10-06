@@ -241,7 +241,7 @@ elif [[ "${1:-}" != audit ]]; then
 fi
 
 # The pinned Node archive may be supplied offline; otherwise fetch the official release.
-note 'Готовим проверку сервера...'
+note 'Проверяем настройки сервера...'
 stage="$(mktemp -d /tmp/nait-awg.XXXXXX)"
 if [[ -n "${NAIT_AWG_NODE_ARCHIVE:-}" ]]; then
   [[ -f "$NAIT_AWG_NODE_ARCHIVE" ]] || fail 'NAIT_AWG_NODE_ARCHIVE is not a readable file.'
