@@ -934,6 +934,7 @@ async function selectQrFormat(format) {
   link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');
   status.hidden = false;
   const multipart = format === 'vpn';
+  document.getElementById('qrModal').setAttribute('data-qr-format', format);
   document.getElementById('qrActions').hidden = false;
   copy.hidden=link.hidden=multipart;
   const hint=document.getElementById('qrMultipartHint');
@@ -956,7 +957,7 @@ async function selectQrFormat(format) {
       const showFrame=()=>{
         if(requestId!==qrRequestId){stopQrAnimation();return;}
         image.src=series.frames[index];
-        hint.textContent=series.frames.length>1?`Кадр ${index+1} из ${series.frames.length}. QR переключается автоматически. Дождитесь, пока сканер AmneziaVPN считает все части.`:'QR для сканера AmneziaVPN.';
+        hint.textContent=series.frames.length>1?`Кадр ${index+1} из ${series.frames.length}\nQR переключается автоматически.\nДождитесь, пока сканер AmneziaVPN считает все части.`:'QR для сканера AmneziaVPN.';
       };
       showFrame();
       if(series.frames.length>1)qrAnimationTimer=setInterval(()=>{index=(index+1)%series.frames.length;showFrame();},1000);
