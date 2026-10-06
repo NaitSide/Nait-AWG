@@ -57,7 +57,9 @@ app.set('trust proxy', false);
 const loginLimiter = createLoginLimiter();
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  // Native form POSTs need their same-origin Origin header. no-referrer makes
+  // browsers send Origin: null, which the mutation guard correctly rejects.
+  res.setHeader('Referrer-Policy', 'same-origin');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'");
