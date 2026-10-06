@@ -200,7 +200,7 @@ fi
 source "$SOURCE_DIR/scripts/installer-output.sh"
 if [[ "${1:-}" != audit ]]; then installer_log_init new; fi
 if [[ "${1:-}" == full ]]; then
-  [[ -f "$SOURCE_DIR/scripts/install-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/start-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/fresh-awg-config.js" ]] || fail 'В исходниках отсутствует полный установщик AWG.'
+  [[ -f "$SOURCE_DIR/scripts/install-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/start-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/fresh-awg-config.js" && -f "$SOURCE_DIR/scripts/load-awg-image.sh" ]] || fail 'В исходниках отсутствует полный установщик AWG.'
   bash "$SOURCE_DIR/scripts/install-fresh-awg.sh" check
   note ''
   note '============================================================'

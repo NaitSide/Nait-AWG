@@ -12,6 +12,7 @@ data/
 *.log
 *.tar.gz
 *.tar.xz
+!/bundle/amneziawg-3.1.20260812-linux-amd64.tar.gz
 traffic-history.json
 peer-notes.json
 

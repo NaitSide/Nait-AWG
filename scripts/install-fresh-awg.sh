@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# Fresh VPS bootstrap adapted from Nait-AWG-Node; never adopt/replace another VPN.
+# Fresh VPS bootstrap with a bundled official runtime; never replace another VPN.
 set -Eeuo pipefail
 readonly SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly STATE_DIR=/opt/naitlab/nait_awg_runtime
 readonly CONTAINER=amnezia-awg2
-# Official linux/amd64 manifest, verified against Docker Hub on 2026-10-05.
-readonly IMAGE=amneziavpn/amneziawg-go@sha256:c68009d33df3aef4654db72bf1a7880cfa0a631fe866c50d9ae3dd34ddd7c13a
-readonly IMAGE_ID=sha256:9d73b5cb2089bdf1deabfbb9fe95a930853b2d1ff83017805e29a6a9e13c2273
 fail() { printf 'Ошибка: %s\n' "$*" >&2; if declare -F installer_log_hint >/dev/null; then installer_log_hint; fi; exit 1; }
 note() { printf '%s\n' "$*" >&2; }
 source "$SOURCE_DIR/scripts/installer-output.sh"
+source "$SOURCE_DIR/scripts/load-awg-image.sh"
 port_free() {
   local listeners
   listeners="$(ss -H "$1" "( sport = :$2 )")" || fail 'Не удалось проверить занятость порта.'
@@ -42,6 +40,7 @@ assert_fresh() {
 [[ "${ID:-}" == ubuntu && "${VERSION_ID:-}" == 24.04 ]] || fail 'Поддерживается Ubuntu 24.04 x86_64.'
 for cmd in systemctl ss ip grep; do command -v "$cmd" >/dev/null || fail "Нужна команда $cmd."; done
 case "${1:-}" in check|prepare|install) ;; *) fail 'Использование: install-fresh-awg.sh check|prepare|install [node] [UDP-port]' ;; esac
+verify_awg_archive
 assert_fresh
 if [[ "$1" == check ]]; then exit 0; fi
 installer_log_init
@@ -70,18 +69,16 @@ port=$((10#$port))
 port_free -lun "$port" || fail "UDP-порт $port занят."
 ip -j -4 route show table all | "$node" "$SOURCE_DIR/scripts/fresh-awg-config.js" routes || fail 'Подсеть 10.8.1.0/24 пересекается с существующим маршрутом или маршруты недоступны.'
 
-run_logged 'Загружаем официальный Docker-образ AmneziaWG 3.1...' docker pull --platform linux/amd64 "$IMAGE"
-[[ "$(docker image inspect "$IMAGE" --format '{{.Id}}')" == "$IMAGE_ID" ]] || fail 'Идентификатор образа не совпал.'
-[[ "$(docker image inspect "$IMAGE" --format '{{.Architecture}}')" == amd64 ]] || fail 'Архитектура образа не совпала.'
-tools_version="$(docker run --rm --network none --entrypoint awg "$IMAGE" --version)"
+load_awg_image
+tools_version="$(docker run --pull=never --rm --network none --entrypoint awg "$IMAGE" --version)"
 [[ "$tools_version" == 'amneziawg-tools v3.1.20260812' ]] || fail 'Официальный образ не содержит ожидаемый AWG 3.1.'
-# Recheck after the download, before generating or persisting any node state.
+# Recheck after loading, before generating or persisting any node state.
 assert_fresh
 check_result="$(ss -H -lun "( sport = :$port )")"
 [[ -z "$check_result" ]] || fail "UDP-порт $port заняли во время подготовки."
-private_key="$(docker run --rm --network none --entrypoint awg "$IMAGE" genkey)"
-public_key="$(printf '%s\n' "$private_key" | docker run --rm --network none -i --entrypoint awg "$IMAGE" pubkey)"
-header_key="$(docker run --rm --network none --entrypoint awg "$IMAGE" genkey)"
+private_key="$(docker run --pull=never --rm --network none --entrypoint awg "$IMAGE" genkey)"
+public_key="$(printf '%s\n' "$private_key" | docker run --pull=never --rm --network none -i --entrypoint awg "$IMAGE" pubkey)"
+header_key="$(docker run --pull=never --rm --network none --entrypoint awg "$IMAGE" genkey)"
 note 'Настраиваем AmneziaWG...'
 install -d -m 0755 /opt/naitlab
 diagnose_failure() {
@@ -95,7 +92,7 @@ umask 077
 printf '%s\n%s\n%s\n' "$private_key" "$public_key" "$header_key" | "$node" "$SOURCE_DIR/scripts/fresh-awg-config.js" write "$STATE_DIR" "$port"
 unset private_key header_key
 install -m 0755 "$SOURCE_DIR/scripts/start-fresh-awg.sh" "$STATE_DIR/start-awg.sh"
-run_logged 'Запускаем AmneziaWG...' docker run -d --init --log-opt max-size=2m --log-opt max-file=2 --restart always \
+run_logged 'Запускаем AmneziaWG...' docker run --pull=never -d --init --log-opt max-size=2m --log-opt max-file=2 --restart always \
   --privileged --cap-add NET_ADMIN --cap-add SYS_MODULE \
   --sysctl net.ipv4.ip_forward=1 --sysctl net.ipv4.conf.all.src_valid_mark=1 \
   -p "$port:$port/udp" -v /lib/modules:/lib/modules:ro \

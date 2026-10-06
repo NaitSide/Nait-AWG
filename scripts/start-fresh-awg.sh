@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adapted from Nait-AWG-Node/scripts/start-awg.sh, using the official AWG layout.
+# Start the official AWG runtime with persistent Nait-AWG configuration.
 set -Eeuo pipefail
 readonly AWG_CONFIG=/opt/amnezia/awg/awg0.conf
 readonly AWG_SUBNET=10.8.1.0/24
