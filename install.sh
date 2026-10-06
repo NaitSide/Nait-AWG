@@ -19,6 +19,7 @@ if [[ "${1:-}" != install && "${1:-}" != full && "${1:-}" != update && "${1:-}" 
     printf '  3) Обновить веб-интерфейс Nait-AWG\n' >&2
     printf '  4) Сбросить логин и пароль\n\n' >&2
     read -r -p 'Введите номер [1-4]: ' requested_action </dev/tty
+    printf '\n\n' >&2
   fi
   case "$requested_action" in
     1|install) requested_action=install ;;
@@ -92,7 +93,7 @@ reset_stopped=false
 reset_committed=false
 full_runtime_ready=false
 
-fail() { printf 'Ошибка: %s\n' "$*" >&2; exit 1; }
+fail() { printf 'Ошибка: %s\n' "$*" >&2; if declare -F installer_log_hint >/dev/null; then installer_log_hint; fi; exit 1; }
 note() { printf '%s\n' "$*" >&2; }
 rollback_reset() {
   [[ "$reset_stopped" == true && "$reset_committed" != true ]] || return 0
@@ -195,6 +196,9 @@ if [[ "${1:-}" != audit ]]; then
   flock -n 9 || fail 'Другой установщик Nait-AWG уже работает. Дождитесь его завершения.'
 fi
 [[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+[[ -f "$SOURCE_DIR/scripts/installer-output.sh" ]] || fail 'В исходниках отсутствует модуль вывода установщика.'
+source "$SOURCE_DIR/scripts/installer-output.sh"
+if [[ "${1:-}" != audit ]]; then installer_log_init new; fi
 if [[ "${1:-}" == full ]]; then
   [[ -f "$SOURCE_DIR/scripts/install-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/start-fresh-awg.sh" && -f "$SOURCE_DIR/scripts/fresh-awg-config.js" ]] || fail 'В исходниках отсутствует полный установщик AWG.'
   bash "$SOURCE_DIR/scripts/install-fresh-awg.sh" check
@@ -202,9 +206,9 @@ if [[ "${1:-}" == full ]]; then
   note '============================================================'
   note 'Установка AmneziaWG 3.1 + веб-интерфейс Nait-AWG'
   note ''
-  note 'Используется официальный образ AmneziaWG 3.1 от'
-  note 'разработчиков Amnezia — тот же VPN-движок, что и при'
-  note 'установке через AmneziaVPN.'
+  note 'Используется официальный Docker-образ AmneziaWG 3.1'
+  note 'от разработчиков Amnezia — тот же, который используется'
+  note 'при установке через приложение AmneziaVPN.'
   note ''
   note 'Установщик настроит VPN на сервере и добавит'
   note 'веб-интерфейс для управления пользователями.'
@@ -213,7 +217,7 @@ if [[ "${1:-}" == full ]]; then
   note '============================================================'
   note ''
   if [[ -r /dev/tty ]]; then
-    read -r -p 'Нажмите Enter, чтобы продолжить (Ctrl+C — отмена): ' confirmation </dev/tty || fail 'Продолжение не подтверждено. Установка отменена.'
+    read -r -p 'Нажмите Enter, чтобы продолжить: ' confirmation </dev/tty || fail 'Продолжение не подтверждено. Установка отменена.'
   else
     [[ "${NAIT_AWG_ACCEPT_FRESH:-}" == 1 ]] || fail 'Для автоматической установки укажите NAIT_AWG_ACCEPT_FRESH=1.'
   fi
@@ -257,10 +261,10 @@ collect_install_options() {
   if [[ -z "$public_endpoint" && -r /dev/tty ]]; then
     detected_endpoint="$("$node" "$SOURCE_DIR/scripts/detect-public-ipv4.js")"
     if [[ -n "$detected_endpoint" ]]; then
-      read -r -p "Публичный IPv4 сервера [$detected_endpoint] (Enter — принять): " public_endpoint </dev/tty
+      read -r -p "Введите IPv4 сервера [$detected_endpoint]: " public_endpoint </dev/tty
       public_endpoint="${public_endpoint:-$detected_endpoint}"
     else
-      read -r -p 'Введите публичный IPv4 сервера: ' public_endpoint </dev/tty
+      read -r -p 'Введите IPv4 сервера: ' public_endpoint </dev/tty
     fi
   fi
   [[ "$public_endpoint" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || fail 'Set NAIT_AWG_PUBLIC_ENDPOINT to a public IPv4 address.'
@@ -279,7 +283,7 @@ collect_install_options() {
     done
     [[ -n "$suggested_panel_port" ]] || fail 'Не удалось подобрать свободный порт для панели.'
     if [[ -r /dev/tty ]]; then
-      read -r -p "Порт веб-панели [$suggested_panel_port] (Enter — принять): " panel_port </dev/tty
+      read -r -p "Введите порт веб-панели [$suggested_panel_port]: " panel_port </dev/tty
       panel_port="${panel_port:-$suggested_panel_port}"
     else
       fail 'Укажите порт панели через NAIT_AWG_PANEL_PORT.'
@@ -301,7 +305,7 @@ if [[ "${1:-}" == full ]]; then
       suggested_awg_port="$("$node" -e 'process.stdout.write(String(require("node:crypto").randomInt(20000, 60001)))')"
     done
     if [[ -r /dev/tty ]]; then
-      read -r -p "UDP-порт AmneziaWG [$suggested_awg_port] (Enter — принять): " awg_port </dev/tty
+      read -r -p "Введите UDP-порт AmneziaWG [$suggested_awg_port]: " awg_port </dev/tty
       awg_port="${awg_port:-$suggested_awg_port}"
     else
       awg_port="$suggested_awg_port"
@@ -332,10 +336,8 @@ if [[ "${1:-}" == update ]]; then
   cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$SOURCE_DIR/package-lock.json" "$stage/"
   cp -R -- "$SOURCE_DIR/vendor/receiver/." "$stage/receiver/"
   cp -R -- "$stage/node-v24.20.0-linux-x64/." "$stage/runtime/"
-  note 'Устанавливаем библиотеки веб-панели...'
-  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
-  note 'Устанавливаем библиотеки внутреннего сервиса...'
-  PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
+  PATH="$stage/runtime/bin:$PATH" run_logged 'Устанавливаем библиотеки веб-панели...' "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
+  PATH="$stage/runtime/bin:$PATH" run_logged 'Устанавливаем библиотеки внутреннего сервиса...' "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
   rm -f -- "$stage/$NODE_ARCHIVE"
   rm -rf -- "$stage/node-v24.20.0-linux-x64"
   chown -R root:root "$stage/app" "$stage/runtime" "$stage/receiver" "$stage/package.json"
@@ -409,10 +411,8 @@ install -d -m 0750 "$stage/receiver" "$stage/data" "$stage/tls" "$stage/runtime"
 cp -R -- "$SOURCE_DIR/app" "$SOURCE_DIR/package.json" "$SOURCE_DIR/package-lock.json" "$stage/"
 cp -R -- "$SOURCE_DIR/vendor/receiver/." "$stage/receiver/"
 cp -R -- "$stage/node-v24.20.0-linux-x64/." "$stage/runtime/"
-note 'Устанавливаем библиотеки веб-панели...'
-PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
-note 'Устанавливаем библиотеки внутреннего сервиса...'
-PATH="$stage/runtime/bin:$PATH" "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
+PATH="$stage/runtime/bin:$PATH" run_logged 'Устанавливаем библиотеки веб-панели...' "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
+PATH="$stage/runtime/bin:$PATH" run_logged 'Устанавливаем библиотеки внутреннего сервиса...' "$stage/runtime/bin/node" "$stage/runtime/lib/node_modules/npm/bin/npm-cli.js" ci --prefix "$stage/receiver" --omit=dev --ignore-scripts --no-audit --no-fund --no-update-notifier --loglevel=error
 rm -f -- "$stage/$NODE_ARCHIVE"
 rm -rf -- "$stage/node-v24.20.0-linux-x64"
 
@@ -423,9 +423,9 @@ fi
 getent group docker | grep -qw nait-awg || usermod -aG docker nait-awg
 nait_awg_gid="$(getent group nait-awg | cut -d: -f3)"
 
-openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 \
+run_logged 'Создаём HTTPS-сертификат веб-панели...' openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 \
   -keyout "$stage/tls/key.pem" -out "$stage/tls/cert.pem" \
-  -subj "/CN=$public_endpoint" -addext "subjectAltName=IP:$public_endpoint" >/dev/null 2>&1
+  -subj "/CN=$public_endpoint" -addext "subjectAltName=IP:$public_endpoint"
 receiver_key="$(openssl rand -base64 32 | tr -d '\n')"
 session_secret="$(openssl rand -base64 32 | tr -d '\n')"
 data_key="$(openssl rand -base64 32 | tr -d '\n')"
@@ -514,8 +514,7 @@ if [[ "$panel_ready" != true ]]; then
 fi
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'AWG container start time changed during installation; investigate immediately.'
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
-  note "Открываем TCP-порт $panel_port в UFW для веб-панели..."
-  ufw allow "$panel_port/tcp" comment 'Nait-AWG web panel'
+  run_logged "Открываем TCP-порт $panel_port в UFW для веб-панели..." ufw allow "$panel_port/tcp" comment 'Nait-AWG web panel'
 fi
 note "Готово: https://$public_endpoint:$panel_port/ (самоподписанный сертификат)."
 note 'Логин панели: admin'
