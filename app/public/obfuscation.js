@@ -74,13 +74,44 @@
     }catch(error){errorBox.textContent=error.message;errorBox.hidden=false;}
     finally{busy=false;apply.textContent='Применить';controls();}
   });
+  let activeHint=null;
+  // Move the open hint out of clipped cards/main; z-index alone cannot escape overflow.
+  function positionHint(){
+    if(!activeHint)return;
+    const {button,popover}=activeHint;
+    const anchor=button.getBoundingClientRect();
+    const margin=12,gap=8,width=document.documentElement.clientWidth,height=window.innerHeight;
+    if(anchor.bottom<0||anchor.top>height||!button.getClientRects().length){hideHints();return;}
+    popover.style.maxHeight=`${Math.max(40,height-2*margin)}px`;
+    const size=popover.getBoundingClientRect();
+    const left=Math.max(margin,Math.min(anchor.left,width-size.width-margin));
+    const below=height-anchor.bottom-gap-margin,above=anchor.top-gap-margin;
+    const useBelow=below>=size.height||below>=above;
+    popover.style.maxHeight=`${Math.max(40,useBelow?below:above)}px`;
+    const actual=popover.getBoundingClientRect();
+    const top=useBelow?anchor.bottom+gap:anchor.top-gap-actual.height;
+    popover.style.left=`${left}px`;
+    popover.style.top=`${Math.max(margin,Math.min(top,height-actual.height-margin))}px`;
+  }
   function hideHints(){
-    for(const button of card.querySelectorAll('[data-obfuscation-help]')){button.setAttribute('aria-expanded','false');document.getElementById(button.getAttribute('aria-controls')).hidden=true;}
+    if(!activeHint)return;
+    const {button,popover,parent}=activeHint;
+    button.setAttribute('aria-expanded','false');popover.hidden=true;
+    popover.classList.remove('floating');popover.removeAttribute('style');parent.appendChild(popover);
+    activeHint=null;
   }
   for(const button of card.querySelectorAll('[data-obfuscation-help]'))button.addEventListener('click',()=>{
     const open=button.getAttribute('aria-expanded')!=='true';hideHints();
-    button.setAttribute('aria-expanded',String(open));document.getElementById(button.getAttribute('aria-controls')).hidden=!open;
+    if(open){
+      const popover=document.getElementById(button.getAttribute('aria-controls'));
+      activeHint={button,popover,parent:popover.parentElement};
+      document.body.appendChild(popover);popover.classList.add('floating');popover.hidden=false;
+      button.setAttribute('aria-expanded','true');positionHint();
+    }
   });
-  document.addEventListener('click',event=>{if(!event.target.closest('.obfuscation-param'))hideHints();});
+  document.addEventListener('click',event=>{if(!event.target.closest('.obfuscation-info,.obfuscation-popover'))hideHints();});
+  document.addEventListener('scroll',positionHint,true);
+  window.addEventListener('resize',positionHint);
+  document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',hideHints));
   document.addEventListener('keydown',event=>{if(event.key==='Escape')hideHints();});
 })();

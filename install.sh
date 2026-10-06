@@ -78,6 +78,7 @@ readonly SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly INSTALL_DIR=/opt/naitlab/nait_awg
 readonly PANEL_UNIT=nait-awg-selfhost.service
 readonly RECEIVER_UNIT=nait-awg-receiver-selfhost.service
+readonly DOMAIN_UNIT=nait-awg-domain.service
 readonly NODE_ARCHIVE=node-v24.20.0-linux-x64.tar.xz
 readonly NODE_SHA256=2f2c0da162318f0de47665410c7c8c2ed3d36c8f3105de4bbc61176c70a7cbf2
 stage=''
@@ -123,7 +124,14 @@ rollback_update() {
   done
   if [[ -f "$update_backup/units/$PANEL_UNIT" ]]; then cp -a -- "$update_backup/units/$PANEL_UNIT" "/etc/systemd/system/$PANEL_UNIT"; fi
   if [[ -f "$update_backup/units/$RECEIVER_UNIT" ]]; then cp -a -- "$update_backup/units/$RECEIVER_UNIT" "/etc/systemd/system/$RECEIVER_UNIT"; fi
+  if [[ -f "$update_backup/units/$DOMAIN_UNIT" ]]; then
+    cp -a -- "$update_backup/units/$DOMAIN_UNIT" "/etc/systemd/system/$DOMAIN_UNIT"
+  else
+    systemctl disable --now "$DOMAIN_UNIT" >/dev/null 2>&1 || true
+    rm -f -- "/etc/systemd/system/$DOMAIN_UNIT"
+  fi
   systemctl daemon-reload
+  if [[ -f "$update_backup/units/$DOMAIN_UNIT" ]]; then systemctl restart "$DOMAIN_UNIT"; fi
   systemctl restart "$RECEIVER_UNIT" "$PANEL_UNIT"
   note "Предыдущая версия возвращена. Диагностические файлы сохранены: $update_backup"
 }
@@ -330,6 +338,13 @@ if [[ "$awg_container" == amnezia-awg2 ]]; then
 fi
 if [[ "${1:-}" == audit ]]; then exit 0; fi
 
+# The panel remains unprivileged. Standalone HTTP-01 needs no reverse proxy.
+[[ -f "$SOURCE_DIR/app/domain-helper.js" && -f "$SOURCE_DIR/deploy/$DOMAIN_UNIT" ]] || fail 'В исходниках отсутствует служба сертификатов.'
+if [[ ! -x /usr/bin/certbot ]]; then
+  run_logged 'Подготавливаем выпуск сертификатов для домена...' env DEBIAN_FRONTEND=noninteractive apt-get update
+  run_logged 'Устанавливаем службу сертификатов...' env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends certbot
+fi
+
 if [[ "${1:-}" == update ]]; then
   note 'Готовим обновление веб-панели. Пользователи, пароль и настройки будут сохранены...'
   install -d -m 0750 "$stage/receiver" "$stage/runtime"
@@ -347,9 +362,11 @@ if [[ "${1:-}" == update ]]; then
   install -d -m 0700 "$update_backup/old" "$update_backup/units"
   cp -a -- "/etc/systemd/system/$PANEL_UNIT" "$update_backup/units/$PANEL_UNIT"
   cp -a -- "/etc/systemd/system/$RECEIVER_UNIT" "$update_backup/units/$RECEIVER_UNIT"
+  if [[ -f "/etc/systemd/system/$DOMAIN_UNIT" ]]; then cp -a -- "/etc/systemd/system/$DOMAIN_UNIT" "$update_backup/units/$DOMAIN_UNIT"; fi
   update_candidates=(app runtime node_modules package.json package-lock.json receiver/src receiver/node_modules receiver/package.json receiver/package-lock.json receiver/README.md)
   update_items=()
   update_active=true
+  systemctl stop "$DOMAIN_UNIT" >/dev/null 2>&1 || true
   for item in "${update_candidates[@]}"; do
     [[ -e "$stage/$item" ]] || continue
     update_items+=("$item")
@@ -359,7 +376,9 @@ if [[ "${1:-}" == update ]]; then
   done
   install -m 0644 "$SOURCE_DIR/deploy/nait-awg-selfhost.service" "/etc/systemd/system/$PANEL_UNIT"
   install -m 0644 "$SOURCE_DIR/deploy/nait-awg-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
+  install -m 0644 "$SOURCE_DIR/deploy/$DOMAIN_UNIT" "/etc/systemd/system/$DOMAIN_UNIT"
   systemctl daemon-reload
+  systemctl --quiet enable --now "$DOMAIN_UNIT"
 
   note 'Перезапускаем внутренний сервис панели...'
   systemctl restart "$RECEIVER_UNIT"
@@ -481,7 +500,9 @@ mv -- "$stage" "$INSTALL_DIR"
 stage=''
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-selfhost.service" "/etc/systemd/system/$PANEL_UNIT"
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
+install -m 0644 "$SOURCE_DIR/deploy/$DOMAIN_UNIT" "/etc/systemd/system/$DOMAIN_UNIT"
 systemctl daemon-reload
+systemctl --quiet enable --now "$DOMAIN_UNIT"
 note 'Запускаем внутренний сервис панели...'
 systemctl --quiet enable --now "$RECEIVER_UNIT"
 receiver_ready=false

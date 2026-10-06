@@ -1,7 +1,7 @@
 [Unit]
 Description=Nait-AWG panel (existing AmneziaWG)
-After=network-online.target docker.service nait-awg-receiver-selfhost.service
-Wants=network-online.target
+After=network-online.target docker.service nait-awg-receiver-selfhost.service nait-awg-domain.service
+Wants=network-online.target nait-awg-domain.service
 Requires=docker.service nait-awg-receiver-selfhost.service
 
 [Service]

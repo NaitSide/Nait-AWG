@@ -13,6 +13,7 @@ const { createHttpError, createAwgService } = require('./services/awgService');
 const { getLatestAwgToolsRelease, getLatestNaitAwgVersion } = require('./services/releaseService');
 const { renderPanel: renderAwgPanel } = require('./views/panelView');
 const { createLoginLimiter, connectionAddress } = require('./services/loginProtection');
+const { createDomainService } = require('./services/domainService');
 
 const app = express();
 const host = process.env.HOST || '127.0.0.1';
@@ -30,6 +31,7 @@ const publicEndpointHost = String(process.env.PUBLIC_ENDPOINT_HOST || '').trim()
 const panelDataPath = String(process.env.NAIT_AWG_DATA_PATH || path.join(__dirname, '..', 'data', 'clients.db')).trim();
 const adminAuthPath = String(process.env.NAIT_AWG_AUTH_PATH || path.join(path.dirname(panelDataPath), 'admin-auth.json')).trim();
 const panelService = createAwgService();
+const domainService = createDomainService({ enabled: tlsEnabled && process.platform === 'linux' });
 
 if (sessionSecret.length < 32) throw new Error('NAIT_AWG_SESSION_SECRET must contain at least 32 random bytes encoded as base64');
 if (!Number.isInteger(sessionTtlSeconds) || sessionTtlSeconds < 3600 || sessionTtlSeconds > 90 * 24 * 60 * 60) throw new Error('NAIT_AWG_SESSION_TTL_SECONDS must be between 3600 and 7776000');
@@ -315,6 +317,16 @@ app.patch(['/api/admin/credentials', '/api/admin/password'], requireAuth, async 
   }
 });
 app.get('/api/status', requireAuth, async (_req, res) => { try { res.json(await panelService.receiver('/awg/profile')); } catch (error) { sendError(res, error); } });
+function sendDomainError(res, error) {
+  return res.status(error.status || 503).json({ code: error.code || 'domain_failed',
+    message: error.status ? error.message : 'Не удалось подключить домен. Текущий доступ сохранён.' });
+}
+app.get('/api/domain', requireAuth, async (_req, res) => {
+  try { res.json(await domainService.status()); } catch (error) { sendDomainError(res, error); }
+});
+app.post('/api/domain', requireAuth, async (req, res) => {
+  try { res.status(202).json(await domainService.configure(req.body)); } catch (error) { sendDomainError(res, error); }
+});
 function requireSameOrigin(req,res,next){
   const origin=req.get('origin');
   let valid = req.get('sec-fetch-site') !== 'cross-site';
@@ -446,10 +458,12 @@ if (require.main === module) {
   const server = tlsEnabled
     ? https.createServer({ key: fs.readFileSync(tlsKeyPath), cert: fs.readFileSync(tlsCertPath) }, app)
     : app;
-  server.listen(port, host, () => {
+  if (tlsEnabled) domainService.attach(server).finally(() => server.listen(port, host, onListening));
+  else server.listen(port, host, onListening);
+  function onListening() {
     console.log(`Nait-AWG listening on ${tlsEnabled ? 'https' : 'http'}://${host}:${port}`);
     panelService.startUsageTracking();
-  });
+  }
 }
 
 module.exports = app;

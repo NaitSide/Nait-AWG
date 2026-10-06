@@ -1,0 +1,29 @@
+[Unit]
+Description=Nait-AWG domain certificates
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=nait-awg
+WorkingDirectory=/opt/naitlab/nait_awg
+EnvironmentFile=/opt/naitlab/nait_awg/.env
+ExecStart=/opt/naitlab/nait_awg/runtime/bin/node /opt/naitlab/nait_awg/app/domain-helper.js
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=nait-awg-domain
+RuntimeDirectoryMode=0750
+StateDirectory=nait-awg-domain
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nait-awg-domain /run/nait-awg-domain
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target
