@@ -393,6 +393,7 @@ if [[ "${1:-}" == update ]]; then
     if [[ -e "$INSTALL_DIR/$item" ]]; then mv -- "$INSTALL_DIR/$item" "$update_backup/old/$item"; fi
     mv -- "$stage/$item" "$INSTALL_DIR/$item"
   done
+  node="$INSTALL_DIR/runtime/bin/node"
   install -m 0644 "$SOURCE_DIR/deploy/nait-awg-selfhost.service" "/etc/systemd/system/$PANEL_UNIT"
   install -m 0644 "$SOURCE_DIR/deploy/nait-awg-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
   install -m 0644 "$SOURCE_DIR/deploy/$DOMAIN_UNIT" "/etc/systemd/system/$DOMAIN_UNIT"
@@ -518,6 +519,7 @@ chmod 0755 "$stage" "$stage/app" "$stage/receiver" "$stage/runtime" "$stage/tls"
 [[ ! -e "$INSTALL_DIR" ]] || fail "$INSTALL_DIR appeared during installation; refusing to overwrite it."
 mv -- "$stage" "$INSTALL_DIR"
 stage=''
+node="$INSTALL_DIR/runtime/bin/node"
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-selfhost.service" "/etc/systemd/system/$PANEL_UNIT"
 install -m 0644 "$SOURCE_DIR/deploy/nait-awg-receiver-selfhost.service" "/etc/systemd/system/$RECEIVER_UNIT"
 install -m 0644 "$SOURCE_DIR/deploy/$DOMAIN_UNIT" "/etc/systemd/system/$DOMAIN_UNIT"
