@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+const { installerText } = require('./installer-i18n');
 const net = require('node:net');
 const fs = require('node:fs/promises');
 const tls = require('node:tls');
@@ -64,7 +65,15 @@ async function main() {
     else if (action === 'url' && args.length === 2) process.stdout.write(panelUrl(args[0], args[1]));
     else if (action === 'installed-url' && args.length === 2) process.stdout.write(await installedPanelUrl(args[0], args[1]));
     else throw new Error('Использование: panel-access.js port PORT | url IPv4 PORT | installed-url IPv4 PORT');
-  } catch (error) { console.error(error.message); process.exitCode = 1; }
+  } catch (error) {
+    const messages = {
+      'Выберите 443 или порт от 1024 до 65535, кроме внутреннего порта 42842.': 'Choose 443 or a port from 1024 to 65535, excluding internal port 42842.',
+      'Нужен IPv4 сервера.': 'Server IPv4 is required.',
+      'Использование: panel-access.js port PORT | url IPv4 PORT | installed-url IPv4 PORT': 'Usage: panel-access.js port PORT | url IPv4 PORT | installed-url IPv4 PORT'
+    };
+    console.error(installerText(error.message, messages[error.message] || error.message));
+    process.exitCode = 1;
+  }
 }
 if (require.main === module) main();
 module.exports = { normalizePanelPort, panelUrl, installedPanelUrl };

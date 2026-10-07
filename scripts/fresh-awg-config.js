@@ -1,4 +1,5 @@
 'use strict';
+const { installerText } = require('./installer-i18n');
 
 // Fresh-node defaults reuse the validated panel editor, not a second set of rules.
 const fs = require('node:fs');
@@ -59,6 +60,6 @@ if (require.main === module) {
       const [privateKey, publicKey, headerKey] = input.trim().split('\n');
       writeState(process.argv[3], privateKey, publicKey, headerKey, process.argv[4]);
     } else throw new Error('Unknown fresh-node operation.');
-  } catch { console.error('Fresh AWG configuration check failed; no secret values are printed.'); process.exitCode = 1; }
+  } catch { console.error(installerText('Проверка конфигурации новой ноды AWG не пройдена; секретные значения не выводятся.', 'Fresh AWG configuration check failed; no secret values are printed.')); process.exitCode = 1; }
 }
 module.exports = { render, writeState, assertRoutes };

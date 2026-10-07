@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+const { installerText } = require('./installer-i18n');
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -118,7 +119,7 @@ if (require.main === module) {
     else throw new Error('Использование: admin-credentials.js generate | inspect DIR | reset DIR');
   } catch (error) {
     // No passwords, environment content or parser errors are included in diagnostics.
-    console.error('Не удалось подготовить реквизиты панели:', error.code || 'проверьте файлы установленной панели');
+    console.error(installerText('Не удалось подготовить реквизиты панели:', 'Could not prepare panel credentials:'), error.code || installerText('проверьте файлы установленной панели', 'check the installed panel files'));
     process.exitCode = 1;
   }
 }
