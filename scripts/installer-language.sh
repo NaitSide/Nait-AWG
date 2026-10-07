@@ -21,7 +21,7 @@ installer_language_init() {
   fi
   printf '\nВыберите язык / Select language:\n  1) RU\n  2) EN\n\n' >&2
   while true; do
-    if ! read -r -p 'Введите номер / Enter number [1-2]: ' language_choice </dev/tty; then
+    if ! read -r -p 'Введите номер / Enter number: ' language_choice </dev/tty; then
       printf '\nВыбор языка прерван / Language selection cancelled.\n' >&2
       return 1
     fi
