@@ -4,7 +4,6 @@
 .locale-switch button:hover{color:#e6edf3;background:rgba(123,110,170,.16)}
 .locale-switch button:focus-visible{outline:2px solid #b8a6ed;outline-offset:2px}
 .locale-switch-separator{opacity:.45;pointer-events:none}
-.sidebar-note .locale-switch{margin:0 0 10px}
 .login-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .login-header-row{margin-bottom:18px}
 .login-header-row .login-brand{min-width:0;margin-bottom:0}

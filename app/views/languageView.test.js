@@ -5,6 +5,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const {renderLanguageSwitch} = require('./languageView');
+const {renderPanel} = require('./panelView');
+
+test('language choice is available on login only, not in the main panel', () => {
+  const login = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(login, /class="login-header-row"/);
+  assert.match(login, /data-language="ru"/);
+  assert.match(login, /data-language="en"/);
+  const panel = renderPanel({peers: [], profile: {}});
+  assert.doesNotMatch(panel, /data-language=/);
+  assert.match(panel, /action="\/logout"/);
+  assert.match(panel, /src="\/i18n\.js\?v=1"/);
+});
 
 function browserLanguage({locale = 'ru-RU', saved, blocked = false} = {}) {
   const context = vm.createContext({
