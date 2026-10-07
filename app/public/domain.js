@@ -6,7 +6,6 @@
   const email = document.getElementById('domainEmail');
   const save = document.getElementById('domainSave');
   const feedback = document.getElementById('domainFeedback');
-  const badge = document.getElementById('domainBadge');
   let busy = false, dirty = false, timer, polling = false;
   const phases = { checking: 'Проверяем домен…', issuing: 'Получаем сертификат…', applying: 'Подключаем сертификат…', renewing: 'Проверяем продление сертификата…' };
   form.addEventListener('input', () => { dirty = true; });
@@ -15,8 +14,6 @@
     save.disabled = busy || !state.available;
     domain.disabled = email.disabled = busy;
     if (!dirty && !busy) { domain.value = state.domain || ''; email.value = state.email || ''; }
-    badge.textContent = state.connected ? 'Подключён' : 'По IP';
-    badge.classList.toggle('green', Boolean(state.connected));
     const result = document.getElementById('domainResult');
     result.hidden = !state.connected;
     if (state.connected) {

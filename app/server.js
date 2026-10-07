@@ -17,7 +17,7 @@ const { createDomainService } = require('./services/domainService');
 
 const app = express();
 const host = process.env.HOST || '127.0.0.1';
-const port = Number(process.env.PORT || 8443);
+const port = Number(process.env.PORT || 443);
 const tlsKeyPath = String(process.env.TLS_KEY_PATH || '').trim();
 const tlsCertPath = String(process.env.TLS_CERT_PATH || '').trim();
 const tlsEnabled = Boolean(tlsKeyPath || tlsCertPath);

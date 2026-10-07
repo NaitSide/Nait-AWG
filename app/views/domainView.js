@@ -3,7 +3,7 @@ const { infoIcon } = require('./infoIcon');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 function renderDomain(identity = {}) {
   return `<section class="card domain-card" id="domainCard">
-    <div class="card-head"><div><h2>Доступ по домену</h2><p>Без предупреждений браузера о сертификате.</p></div><span class="tag" id="domainBadge">По IP</span></div>
+    <div class="card-head"><div><h2>Доступ по домену</h2><p>Без предупреждений браузера о сертификате.</p></div></div>
     <form id="domainForm"><div class="domain-fields">
       <label class="field">Домен<input id="panelDomain" name="domain" type="text" placeholder="moy-site.ru" maxlength="253" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
       <label class="field"><span>Email <small>(для регистрации в Let’s Encrypt)</small></span><input id="domainEmail" name="email" type="email" placeholder="you@example.com" maxlength="254" autocomplete="email" required></label>

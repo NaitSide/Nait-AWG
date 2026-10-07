@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 const net = require('node:net');
+const { normalizePanelPort } = require('./panel-access');
 
 const PASSWORD_GROUPS = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789', '@#%*_!+-'];
 const PASSWORD_ALPHABET = PASSWORD_GROUPS.join('');
@@ -48,11 +49,12 @@ function inspectInstallation(directory, options = {}) {
     throw new Error('Нестандартный путь авторизации. Автоматический сброс разрешён только для data/admin-auth.json установленной панели.');
   }
   const authStat = regularFile(authPath, true);
-  if (net.isIP(env.PUBLIC_ENDPOINT_HOST || '') !== 4 || !/^\d{1,5}$/.test(env.PORT || '')
-      || Number(env.PORT) < 1024 || Number(env.PORT) > 65535) {
+  let port;
+  try { port = normalizePanelPort(env.PORT); } catch { /* Report the same safe installation error below. */ }
+  if (net.isIP(env.PUBLIC_ENDPOINT_HOST || '') !== 4 || port === undefined) {
     throw new Error('Не удалось прочитать адрес и порт установленной панели.');
   }
-  return { root, envPath, envStat, text, env, authPath, authStat, endpoint: env.PUBLIC_ENDPOINT_HOST, port: Number(env.PORT) };
+  return { root, envPath, envStat, text, env, authPath, authStat, endpoint: env.PUBLIC_ENDPOINT_HOST, port };
 }
 
 function replaceEnv(text, values) {

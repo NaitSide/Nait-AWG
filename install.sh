@@ -65,7 +65,7 @@ if [[ "${1:-}" != install && "${1:-}" != full && "${1:-}" != update && "${1:-}" 
     -o "$download_stage/source.tar.gz"
   tar -xzf "$download_stage/source.tar.gz" -C "$download_stage"
   source_dir="$download_stage/Nait-AWG-main"
-  [[ -f "$source_dir/install.sh" && -f "$source_dir/scripts/selfhost-preflight.js" && -f "$source_dir/scripts/admin-credentials.js" ]] || {
+  [[ -f "$source_dir/install.sh" && -f "$source_dir/scripts/selfhost-preflight.js" && -f "$source_dir/scripts/admin-credentials.js" && -f "$source_dir/scripts/panel-access.js" ]] || {
     printf 'Архив проекта неполный. Установка отменена.\n' >&2
     exit 1
   }
@@ -161,7 +161,7 @@ trap cleanup EXIT
 if [[ "${1:-}" == reset-auth ]]; then
   [[ -f "$INSTALL_DIR/.env" && -f "$INSTALL_DIR/app/server.js" && -x "$INSTALL_DIR/runtime/bin/node" && -f "/etc/systemd/system/$PANEL_UNIT" ]] || fail 'Установленная веб-панель Nait-AWG не найдена или повреждена. Сброс отменён.'
   command -v systemctl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || fail 'Для сброса нужны systemctl и curl.'
-  [[ -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Инструмент сброса доступа отсутствует в исходниках.'
+  [[ -f "$SOURCE_DIR/scripts/admin-credentials.js" && -f "$SOURCE_DIR/scripts/panel-access.js" ]] || fail 'Инструмент сброса доступа отсутствует в исходниках.'
   node="$INSTALL_DIR/runtime/bin/node"
   reset_info="$("$node" "$SOURCE_DIR/scripts/admin-credentials.js" inspect "$INSTALL_DIR")" || fail 'Не удалось проверить файлы авторизации. Ничего не изменено.'
   IFS=$'\t' read -r public_endpoint panel_port reset_auth_path <<< "$reset_info"
@@ -186,8 +186,9 @@ if [[ "${1:-}" == reset-auth ]]; then
     sleep 1
   done
   [[ "$panel_ready" == true ]] || fail "Панель не запустилась после сброса. Проверьте: sudo systemctl status $PANEL_UNIT"
+  panel_address="$("$node" "$SOURCE_DIR/scripts/panel-access.js" url "$public_endpoint" "$panel_port")" || fail 'Не удалось подготовить адрес панели.'
   reset_committed=true
-  note "Доступ сброшен: https://$public_endpoint:$panel_port/"
+  note "Доступ сброшен: $panel_address"
   note 'Логин: admin'
   note "Пароль: $admin_password"
   note '(Сохраните пароль и не забудьте сменить его в настройках.)'
@@ -203,7 +204,7 @@ if [[ "${1:-}" != audit ]]; then
   exec 9>/run/nait-awg-install.lock
   flock -n 9 || fail 'Другой установщик Nait-AWG уже работает. Дождитесь его завершения.'
 fi
-[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" && -f "$SOURCE_DIR/scripts/panel-access.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
 [[ -f "$SOURCE_DIR/scripts/installer-output.sh" ]] || fail 'В исходниках отсутствует модуль вывода установщика.'
 source "$SOURCE_DIR/scripts/installer-output.sh"
 if [[ "${1:-}" != audit ]]; then installer_log_init new; fi
@@ -234,7 +235,7 @@ fi
 for command_name in docker curl openssl tar xz sha256sum systemctl ss getent useradd groupadd usermod; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Missing command: $command_name"
 done
-[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
+[[ -f "$SOURCE_DIR/package.json" && -f "$SOURCE_DIR/package-lock.json" && -f "$SOURCE_DIR/vendor/receiver/package-lock.json" && -f "$SOURCE_DIR/scripts/selfhost-preflight.js" && -f "$SOURCE_DIR/scripts/detect-public-ipv4.js" && -f "$SOURCE_DIR/scripts/admin-credentials.js" && -f "$SOURCE_DIR/scripts/panel-access.js" ]] || fail 'Run from a complete Nait-AWG source checkout.'
 
 if [[ "${1:-}" == install || "${1:-}" == full ]]; then
   [[ ! -e "$INSTALL_DIR" ]] || fail "Nait-AWG уже установлен: $INSTALL_DIR. Повторная установка остановлена; файлы не изменены."
@@ -281,27 +282,45 @@ collect_install_options() {
     (( 10#$octet <= 255 )) || fail 'Invalid public IPv4 address.'
   done
   panel_port="${NAIT_AWG_PANEL_PORT:-}"
-  if [[ -z "$panel_port" ]]; then
+  local interactive_panel_port=false suggested_panel_port=443 normalized_port port_listeners
+  if [[ -z "$panel_port" && -r /dev/tty ]]; then
+    interactive_panel_port=true
+    note '443 — доступ без указания порта в адресе, по IP или домену.'
+    note 'Для другого порта рекомендуем свободное число от 20000 до 60000.'
+    note 'Нажмите Enter для выбора предложенного порта или введите свой.'
+  fi
+  while true; do
+    if [[ -z "$panel_port" ]]; then
+      if [[ "$interactive_panel_port" == true ]]; then
+        read -r -p "Порт веб-панели [$suggested_panel_port]: " panel_port </dev/tty || fail 'Выбор порта прерван.'
+        panel_port="${panel_port:-$suggested_panel_port}"
+      else
+        panel_port=443
+      fi
+    fi
+    if ! normalized_port="$("$node" "$SOURCE_DIR/scripts/panel-access.js" port "$panel_port" 2>/dev/null)"; then
+      [[ "$interactive_panel_port" == true ]] || fail 'Выберите NAIT_AWG_PANEL_PORT=443 или порт от 1024 до 65535, кроме 42842.'
+      note 'Выберите 443 или число от 1024 до 65535. Порт 42842 занят внутренним сервисом.'
+      panel_port=''
+      continue
+    fi
+    panel_port="$normalized_port"
+    port_listeners="$(ss -H -ltn "( sport = :$panel_port )")" || fail 'Не удалось проверить занятость TCP-порта панели.'
+    if [[ -z "$port_listeners" ]]; then break; fi
+    [[ "$interactive_panel_port" == true ]] || fail "TCP-порт $panel_port занят. Укажите другой через NAIT_AWG_PANEL_PORT; чужие службы не остановлены."
+    note "TCP-порт $panel_port занят другой программой. Выберите другой; чужие службы не трогаем."
     suggested_panel_port=''
     for attempt in {1..40}; do
       candidate_port="$("$node" -e 'process.stdout.write(String(require("node:crypto").randomInt(20000, 60001)))')"
-      if [[ "$candidate_port" != 42842 && -z "$(ss -H -ltn "( sport = :$candidate_port )")" ]]; then
+      [[ "$candidate_port" != 42842 ]] || continue
+      port_listeners="$(ss -H -ltn "( sport = :$candidate_port )")" || fail 'Не удалось проверить занятость TCP-портов.'
+      if [[ -z "$port_listeners" ]]; then
         suggested_panel_port="$candidate_port"; break
       fi
     done
     [[ -n "$suggested_panel_port" ]] || fail 'Не удалось подобрать свободный порт для панели.'
-    if [[ -r /dev/tty ]]; then
-      read -r -p "Введите порт веб-панели [$suggested_panel_port]: " panel_port </dev/tty
-      panel_port="${panel_port:-$suggested_panel_port}"
-    else
-      fail 'Укажите порт панели через NAIT_AWG_PANEL_PORT.'
-    fi
-  fi
-  [[ "$panel_port" =~ ^[0-9]{1,5}$ ]] || fail 'Порт панели должен быть числом от 1024 до 65535.'
-  panel_port=$((10#$panel_port))
-  (( panel_port >= 1024 && panel_port <= 65535 )) || fail 'Порт панели должен быть числом от 1024 до 65535.'
-  [[ "$panel_port" != 42842 ]] || fail 'Порт 42842 зарезервирован для внутреннего сервиса.'
-  [[ -z "$(ss -H -ltn "( sport = :$panel_port )")" ]] || fail "TCP-порт $panel_port уже занят. Запустите установку заново и выберите другой."
+    panel_port=''
+  done
 }
 if [[ "${1:-}" == full ]]; then
   collect_install_options
@@ -395,6 +414,7 @@ if [[ "${1:-}" == update ]]; then
   panel_port="$(sed -n 's/^PORT=//p' "$INSTALL_DIR/.env" | head -n 1)"
   public_endpoint="$(sed -n 's/^PUBLIC_ENDPOINT_HOST=//p' "$INSTALL_DIR/.env" | head -n 1)"
   [[ "$panel_port" =~ ^[0-9]{1,5}$ ]] || fail 'Не удалось прочитать порт существующей панели.'
+  panel_address="$("$node" "$SOURCE_DIR/scripts/panel-access.js" url "$public_endpoint" "$panel_port")" || fail 'Не удалось подготовить адрес панели.'
   note 'Перезапускаем веб-панель...'
   systemctl restart "$PANEL_UNIT"
   panel_ready=false
@@ -412,7 +432,7 @@ if [[ "${1:-}" == update ]]; then
   update_active=false
   rm -rf -- "$update_backup"
   update_backup=''
-  note "Nait-AWG обновлён: https://$public_endpoint:$panel_port/"
+  note "Nait-AWG обновлён: $panel_address"
   note 'Пользователи, пароль, порт и настройки сохранены. Установщик обновил веб-интерфейс, не перезапуская контейнер AmneziaWG.'
   exit 0
 fi
@@ -536,8 +556,10 @@ fi
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'AWG container start time changed during installation; investigate immediately.'
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
   run_logged "Открываем TCP-порт $panel_port в UFW для веб-панели..." ufw allow "$panel_port/tcp" comment 'Nait-AWG web panel'
+  run_logged 'Открываем TCP-порт 80 в UFW для проверки домена...' ufw allow '80/tcp' comment 'Nait-AWG domain validation'
 fi
-note "Готово: https://$public_endpoint:$panel_port/ (самоподписанный сертификат)."
+panel_address="$("$node" "$SOURCE_DIR/scripts/panel-access.js" url "$public_endpoint" "$panel_port")" || fail 'Не удалось подготовить адрес панели.'
+note "Готово: $panel_address (самоподписанный сертификат)."
 note 'Логин панели: admin'
 note "Пароль: $admin_password"
 note '(Сохраните пароль и не забудьте сменить его в настройках.)'
@@ -547,3 +569,4 @@ else
   note 'Установщик панели не перезапускал существующий контейнер AmneziaWG.'
 fi
 note 'Если подключение недоступно, проверьте TCP-порт панели и UDP-порт VPN в сетевом экране хостинга.'
+note 'Для подключения домена разрешите у хостинга TCP-порт 80. Он нужен для выпуска и продления сертификата, не для входа в панель.'
