@@ -477,6 +477,15 @@ document.getElementById('clientConfigForm').addEventListener('submit', async eve
   }
 });
 
+let currentUsage = null;
+let selectedUsageMonth = null;
+window.addEventListener('nait:languagechange', () => {
+  if (currentUsage) renderUsageMonths(currentUsage);
+  const createdAt = document.getElementById('restoreCreatedAt');
+  if (createdAt?.dataset.timestamp) {
+    createdAt.textContent = new Date(createdAt.dataset.timestamp).toLocaleString(window.NaitI18n?.locale || 'ru-RU');
+  }
+});
 function renderUsageMonths(usage) {
   const chart = document.getElementById('usageMonths');
   const detail = document.getElementById('usageMonthDetail');
@@ -491,11 +500,14 @@ function renderUsageMonths(usage) {
       sent: Math.max(0, Number(recorded?.sentBytes) || 0) };
   });
   const largest = Math.max(1, ...slots.flatMap(month => [month.received, month.sent]));
-  const monthShort = new Intl.DateTimeFormat('ru-RU', { month: 'short', timeZone: 'UTC' });
-  const monthLong = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const locale = window.NaitI18n?.locale || 'ru-RU';
+  const t = value => window.NaitI18n?.t(value) || value;
+  const monthShort = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' });
+  const monthLong = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' });
   chart.replaceChildren();
   let selectedButton = null;
   function selectMonth(month, button) {
+    selectedUsageMonth = month.key;
     if (selectedButton) {
       selectedButton.classList.remove('selected');
       selectedButton.setAttribute('aria-pressed', 'false');
@@ -519,8 +531,8 @@ function renderUsageMonths(usage) {
     button.className = 'usage-month';
     button.setAttribute('aria-pressed', 'false');
     button.setAttribute('aria-label', monthLong.format(month.date) + ': ' + (month.recorded
-      ? 'получено ' + trafficBytes(month.received) + ', отправлено ' + trafficBytes(month.sent)
-      : 'помесячных данных нет'));
+      ? t('получено') + ' ' + trafficBytes(month.received) + t(', отправлено') + ' ' + trafficBytes(month.sent)
+      : t('помесячных данных нет')));
     if (!month.recorded) button.classList.add('empty');
     const bars = document.createElement('span');
     bars.className = 'usage-month-bars';
@@ -542,10 +554,13 @@ function renderUsageMonths(usage) {
     return button;
   });
   const latestRecorded = slots.reduce((index, month, current) => month.recorded ? current : index, -1);
-  const initiallySelected = latestRecorded < 0 ? slots.length - 1 : latestRecorded;
+  const previousSelection = slots.findIndex(month => month.key === selectedUsageMonth);
+  const initiallySelected = previousSelection >= 0 ? previousSelection : latestRecorded < 0 ? slots.length - 1 : latestRecorded;
   selectMonth(slots[initiallySelected], buttons[initiallySelected]);
 }
 async function openUsage(row) {
+  currentUsage = null;
+  selectedUsageMonth = null;
   const requestId = ++usageRequestId;
   const loading = document.getElementById('usageLoading');
   const error = document.getElementById('usageError');
@@ -566,6 +581,7 @@ async function openUsage(row) {
     before.hidden = !usage.beforeTrackingReceivedBytes && !usage.beforeTrackingSentBytes;
     before.textContent = 'До начала помесячного учёта: ↓ '
       + trafficBytes(usage.beforeTrackingReceivedBytes) + ' · ↑ ' + trafficBytes(usage.beforeTrackingSentBytes);
+    currentUsage = usage;
     renderUsageMonths(usage);
     loading.hidden = true;
     content.hidden = false;
@@ -755,7 +771,9 @@ document.getElementById('restoreForm').addEventListener('submit', async event =>
       });
       const summary = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(summary.message || 'Не удалось проверить резервную копию.');
-      document.getElementById('restoreCreatedAt').textContent = new Date(summary.createdAt).toLocaleString('ru-RU');
+      const createdAt = document.getElementById('restoreCreatedAt');
+      createdAt.dataset.timestamp = summary.createdAt;
+      createdAt.textContent = new Date(summary.createdAt).toLocaleString(window.NaitI18n?.locale || 'ru-RU');
       document.getElementById('restoreClients').textContent = String(summary.clientsCount);
       document.getElementById('restorePeers').textContent = String(summary.peersCount);
       document.getElementById('restoreEndpoint').textContent = summary.sourceEndpoint || '—';

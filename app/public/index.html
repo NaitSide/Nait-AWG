@@ -17,12 +17,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/login.css">
+  <link rel="stylesheet" href="/i18n.css?v=1">
+  <script src="/i18n-catalog.js?v=1"></script>
+  <script src="/i18n.js?v=1"></script>
 </head>
 <body>
   <div class="login-layer" id="loginLayer">
     <section class="login-card" aria-label="Nait-AWG">
       <div class="login-head">
-        <div class="login-brand">
+        <div class="login-header-row"><div class="login-brand">
           <svg aria-hidden="true" viewBox="0 0 1024 1024" focusable="false">
             <polygon fill="currentColor" points="455,270 735,733 358,733 301,826 907,826 512,173"></polygon>
             <polygon fill="currentColor" points="232,826 483,410 427,315 118,826"></polygon>
@@ -30,6 +33,7 @@
           </svg>
           <span>Nait-AWG</span>
         </div>
+        <div class="locale-switch" role="group" aria-label="Язык интерфейса"><button type="button" data-language="ru" aria-label="Русский" aria-pressed="false" lang="ru">RU</button><span class="locale-switch-separator" aria-hidden="true">·</span><button type="button" data-language="en" aria-label="English" aria-pressed="false" lang="en">EN</button></div></div>
         <h1>Вход</h1>
       </div>
       <form id="loginForm" action="/login" method="post" autocomplete="on">

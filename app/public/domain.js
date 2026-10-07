@@ -9,7 +9,7 @@
   const feedbackText = document.getElementById('domainFeedbackText');
   const link = document.getElementById('domainOpen');
   const result = document.getElementById('domainResult');
-  let busy = false, dirty = false, timer, polling = false;
+  let busy = false, dirty = false, timer, polling = false, latestState;
   const phases = { checking: 'Проверяем домен…', issuing: 'Получаем сертификат…', applying: 'Подключаем сертификат…', renewing: 'Проверяем продление сертификата…' };
   form.addEventListener('input', () => { dirty = true; });
   function setFeedback(message, kind = '') {
@@ -19,7 +19,12 @@
     link.hidden = true;
     result.hidden = true;
   }
+  function renderExpiry(state) {
+    const expires = new Date(state.expiresAt).toLocaleDateString(window.NaitI18n?.locale || 'ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    document.getElementById('domainExpiry').textContent = `Сертификат годен до ${expires} · Продлевается автоматически`;
+  }
   function render(state) {
+    latestState = state;
     busy = Boolean(phases[state.operation?.phase]);
     save.disabled = busy || !state.available;
     domain.disabled = email.disabled = busy;
@@ -28,8 +33,7 @@
       const url = new URL(window.location.href);
       url.protocol = 'https:'; url.hostname = state.domain; url.pathname = '/'; url.search = ''; url.hash = '';
       link.href = url.href; link.title = url.href; link.textContent = `${url.href} ↗`;
-      const expires = new Date(state.expiresAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
-      document.getElementById('domainExpiry').textContent = `Сертификат годен до ${expires} · Продлевается автоматически`;
+      renderExpiry(state);
     }
     if (state.operation?.phase === 'error' || state.renewal?.error) {
       setFeedback(state.operation?.phase === 'error' ? state.operation.message : `Не удалось продлить сертификат: ${state.renewal.error}`, 'error');
@@ -70,5 +74,6 @@
       timer = setTimeout(refresh, 10000);
     }
   });
+  window.addEventListener('nait:languagechange', () => { if (latestState?.connected) renderExpiry(latestState); });
   refresh();
 })();

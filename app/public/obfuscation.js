@@ -112,6 +112,7 @@
   document.addEventListener('click',event=>{if(!event.target.closest('.obfuscation-info,.obfuscation-popover'))hideHints();});
   document.addEventListener('scroll',positionHint,true);
   window.addEventListener('resize',positionHint);
+  window.addEventListener('nait:languagechange',positionHint);
   document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',hideHints));
   document.addEventListener('keydown',event=>{if(event.key==='Escape')hideHints();});
 })();
