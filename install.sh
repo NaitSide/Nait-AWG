@@ -429,6 +429,9 @@ if [[ "${1:-}" == update ]]; then
   [[ "$panel_ready" == true ]] || fail "Панель не запустилась. Проверьте: sudo systemctl status $PANEL_UNIT"
   [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'Контейнер AmneziaWG изменился во время обновления. Требуется проверка.'
 
+  if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
+    run_logged 'Открываем TCP-порт 80 в UFW для сертификатов домена...' ufw allow '80/tcp' comment 'Nait-AWG certificates'
+  fi
   update_committed=true
   update_active=false
   rm -rf -- "$update_backup"
@@ -558,7 +561,7 @@ fi
 [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'AWG container start time changed during installation; investigate immediately.'
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
   run_logged "Открываем TCP-порт $panel_port в UFW для веб-панели..." ufw allow "$panel_port/tcp" comment 'Nait-AWG web panel'
-  run_logged 'Открываем TCP-порт 80 в UFW для проверки домена...' ufw allow '80/tcp' comment 'Nait-AWG domain validation'
+  run_logged 'Открываем TCP-порт 80 в UFW для сертификатов домена...' ufw allow '80/tcp' comment 'Nait-AWG certificates'
 fi
 panel_address="$("$node" "$SOURCE_DIR/scripts/panel-access.js" url "$public_endpoint" "$panel_port")" || fail 'Не удалось подготовить адрес панели.'
 note "Готово: $panel_address (самоподписанный сертификат)."

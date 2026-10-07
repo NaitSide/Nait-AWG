@@ -9,8 +9,8 @@ function renderDomain(identity = {}) {
       <label class="field"><span>Email <small>(для регистрации в Let’s Encrypt)</small></span><input id="domainEmail" name="email" type="email" placeholder="you@example.com" maxlength="254" autocomplete="email" required></label>
       <button class="btn purple" id="domainSave" type="submit" disabled>Сохранить</button>
     </div></form>
-    <div class="domain-result" id="domainResult" hidden><a id="domainOpen" class="domain-link" target="_blank" rel="noopener noreferrer">Открыть панель ↗</a><span id="domainExpiry"></span></div>
-    <p class="domain-feedback" id="domainFeedback" role="status" aria-live="polite">Проверяем настройки…</p></div>
+    <p class="domain-feedback" id="domainFeedback" role="status" aria-live="polite"><span id="domainFeedbackText">Проверяем настройки…</span></p>
+    <div class="domain-result" id="domainResult" hidden><span id="domainExpiry"></span><span>Теперь админка доступна по адресу: <a id="domainOpen" class="domain-link" target="_blank" rel="noopener noreferrer" hidden></a></span></div></div>
     <div class="domain-guide"><details class="domain-help"><summary><span class="domain-caret" aria-hidden="true"></span><span>Как подключить домен?</span><span class="domain-info" aria-hidden="true">${infoIcon}</span></summary>
       <ol class="domain-steps">
         <li><strong>У провайдера домена откройте настройки DNS.</strong><ul><li>Добавьте или измените A-запись: IP этого сервера — <strong>${esc(identity.endpointHost || 'смотрите в шапке настроек')}</strong>.</li></ul></li>

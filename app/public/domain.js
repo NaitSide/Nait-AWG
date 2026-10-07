@@ -6,31 +6,37 @@
   const email = document.getElementById('domainEmail');
   const save = document.getElementById('domainSave');
   const feedback = document.getElementById('domainFeedback');
+  const feedbackText = document.getElementById('domainFeedbackText');
+  const link = document.getElementById('domainOpen');
+  const result = document.getElementById('domainResult');
   let busy = false, dirty = false, timer, polling = false;
   const phases = { checking: 'Проверяем домен…', issuing: 'Получаем сертификат…', applying: 'Подключаем сертификат…', renewing: 'Проверяем продление сертификата…' };
   form.addEventListener('input', () => { dirty = true; });
+  function setFeedback(message, kind = '') {
+    feedback.classList.remove('error', 'success');
+    if (kind) feedback.classList.add(kind);
+    feedbackText.textContent = message;
+    link.hidden = true;
+    result.hidden = true;
+  }
   function render(state) {
     busy = Boolean(phases[state.operation?.phase]);
     save.disabled = busy || !state.available;
     domain.disabled = email.disabled = busy;
     if (!dirty && !busy) { domain.value = state.domain || ''; email.value = state.email || ''; }
-    const result = document.getElementById('domainResult');
-    result.hidden = !state.connected;
     if (state.connected) {
       const url = new URL(window.location.href);
       url.protocol = 'https:'; url.hostname = state.domain; url.pathname = '/'; url.search = ''; url.hash = '';
-      const link = document.getElementById('domainOpen');
-      link.href = url.href; link.title = url.href;
-      document.getElementById('domainExpiry').textContent = `До ${new Date(state.expiresAt).toLocaleDateString('ru-RU')} · Продление автоматически`;
+      link.href = url.href; link.title = url.href; link.textContent = `${url.href} ↗`;
+      const expires = new Date(state.expiresAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      document.getElementById('domainExpiry').textContent = `Сертификат годен до ${expires} · Продлевается автоматически`;
     }
-    feedback.classList.remove('error', 'success');
     if (state.operation?.phase === 'error' || state.renewal?.error) {
-      feedback.textContent = state.operation?.phase === 'error' ? state.operation.message : `Не удалось продлить сертификат: ${state.renewal.error}`;
-      feedback.classList.add('error');
-    } else if (busy) feedback.textContent = phases[state.operation.phase];
-    else if (state.operation?.phase === 'done' && !state.connected) feedback.textContent = 'Подключаем сертификат к панели…';
-    else if (state.connected) { feedback.textContent = 'Домен подключён. Откройте панель по новому адресу.'; feedback.classList.add('success'); }
-    else feedback.textContent = 'Необязательно: доступ по IP уже работает.';
+      setFeedback(state.operation?.phase === 'error' ? state.operation.message : `Не удалось продлить сертификат: ${state.renewal.error}`, 'error');
+    } else if (busy) setFeedback(phases[state.operation.phase]);
+    else if (state.operation?.phase === 'done' && !state.connected) setFeedback('Подключаем сертификат к панели…');
+    else if (state.connected) { setFeedback('Домен подключён', 'success'); result.hidden = false; link.hidden = false; }
+    else setFeedback('Необязательно: доступ по IP уже работает.');
     clearTimeout(timer);
     timer = setTimeout(refresh, busy || (state.operation?.phase === 'done' && !state.connected) ? 2000 : 60000);
   }
@@ -46,8 +52,7 @@
     polling = true;
     try { render(await request()); }
     catch (error) {
-      feedback.textContent = error.message;
-      feedback.classList.add('error');
+      setFeedback(error.message, 'error');
       if (!busy) save.disabled = true;
       clearTimeout(timer); timer = setTimeout(refresh, 10000);
     } finally { polling = false; }
@@ -56,11 +61,11 @@
     event.preventDefault(); if (busy || !form.reportValidity()) return;
     const body = { domain: domain.value.trim(), email: email.value.trim() };
     busy = true; save.disabled = true; domain.disabled = email.disabled = true;
-    feedback.classList.remove('error', 'success'); feedback.textContent = 'Проверяем домен…';
+    setFeedback('Проверяем домен…');
     clearTimeout(timer);
     try { dirty = true; render(await request(body)); }
     catch (error) {
-      feedback.textContent = error.message; feedback.classList.add('error');
+      setFeedback(error.message, 'error');
       busy = false; domain.disabled = email.disabled = false; save.disabled = false;
       timer = setTimeout(refresh, 10000);
     }
