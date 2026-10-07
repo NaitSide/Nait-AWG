@@ -427,6 +427,7 @@ if [[ "${1:-}" == update ]]; then
     sleep 1
   done
   [[ "$panel_ready" == true ]] || fail "Панель не запустилась. Проверьте: sudo systemctl status $PANEL_UNIT"
+  panel_address="$("$node" "$SOURCE_DIR/scripts/panel-access.js" installed-url "$public_endpoint" "$panel_port")" || fail 'Не удалось подготовить адрес панели.'
   [[ "$(docker inspect --format '{{.State.StartedAt}}' "$awg_container")" == "$awg_started_at" ]] || fail 'Контейнер AmneziaWG изменился во время обновления. Требуется проверка.'
 
   if command -v ufw >/dev/null 2>&1 && ufw status | grep -q '^Status: active'; then
@@ -436,7 +437,7 @@ if [[ "${1:-}" == update ]]; then
   update_active=false
   rm -rf -- "$update_backup"
   update_backup=''
-  note "Nait-AWG обновлён: $panel_address"
+  note "Nait-AWG доступен по адресу: $panel_address"
   note 'Пользователи, пароль, порт и настройки сохранены. Установщик обновил веб-интерфейс, не перезапуская контейнер AmneziaWG.'
   exit 0
 fi
