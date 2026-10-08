@@ -95,8 +95,7 @@ th.sortable.sorted.asc .sort-asc,th.sortable.sorted.desc .sort-desc{display:bloc
 .qr-modal .qr-body .qr-status{color:var(--muted);font-size:13px}
 .qr-modal #downloadQr[aria-disabled="true"]{opacity:.5;pointer-events:none}
 .create-message{margin:14px 24px 0;padding:10px 12px;min-height:40px;border:1px solid rgba(123,110,170,.32);border-radius:8px;background:rgba(123,110,170,.12);color:var(--muted);font-size:13px;line-height:18px;overflow-wrap:anywhere}
-#createModal .create-message[hidden]{display:block;visibility:hidden;height:40px}
-#createModal.is-success .create-message[hidden]{display:none}
+#createModal .create-message[hidden]{display:none}
 .create-message.error{border-color:rgba(231,111,122,.36);background:rgba(231,111,122,.1);color:#ffabb3}
 .create-success{display:none;margin:16px;padding:14px;border:1px solid rgba(29,158,117,.28);border-radius:8px;background:rgba(29,158,117,.08)}
 #createModal.is-success #createForm{display:none}

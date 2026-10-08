@@ -825,9 +825,9 @@ createForm.addEventListener('submit', async (event) => {
   createSubmit.disabled = true;
   createSubmit.textContent = 'Создаём доступ...';
   document.getElementById('clientLabel').disabled = true;
-  createMessage.hidden = false;
+  createMessage.hidden = true;
   createMessage.classList.remove('error');
-  createMessage.textContent = 'Создаём VPN-клиента...';
+  createMessage.textContent = '';
   try {
     const response = await fetch('/api/peers', {
       method: 'POST',
@@ -1022,7 +1022,7 @@ document.getElementById('copyQr').addEventListener('click', async () => {
 });
 
 document.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', () => closeModal(button.closest('.modal-backdrop'))));
-document.querySelectorAll('.modal-backdrop').forEach(modal => modal.addEventListener('click', event => { if (event.target === modal) closeModal(modal); }));
+// Backdrops never dismiss dialogs: use explicit close controls or Escape.
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
   const topModal = document.querySelector('#deleteModal.open') || document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#clientDownloadModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');

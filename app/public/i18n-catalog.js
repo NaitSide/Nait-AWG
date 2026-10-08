@@ -11,7 +11,7 @@
     'Веб-интерфейс AmneziaWG Self-hosted':'Self-hosted AmneziaWG web interface',
     'Выдать доступ':'Add client', 'Выдать доступ вручную':'Add client manually', 'Новый клиент AmneziaWG':'New AmneziaWG client',
     'Имя клиента':'Client name', 'Например, iPhone':'For example, iPhone', 'Создать доступ':'Create client', 'Отмена':'Cancel', 'Готово':'Done',
-    'Скачать конфиг':'Download config', 'Показать QR-код':'Show QR code', 'Обновить список':'Refresh list', 'Удалить клиента':'Delete client', 'Удалить peer':'Delete peer',
+    'Скачать конфиг':'Download configuration', 'Показать QR-код':'Show QR code', 'Обновить список':'Refresh list', 'Удалить клиента':'Delete client', 'Удалить peer':'Delete peer',
     'Поиск по имени или ip':'Search by name or IP', 'Все пользователи':'All users', 'Активные':'Active', 'Неактивные':'Inactive',
     'Не подключались':'Never connected', 'Отключённые':'Disabled', 'Активен':'Active', 'Неактивен':'Inactive', 'Не подключался':'Never connected', 'Отключён':'Disabled', 'Неизвестно':'Unknown',
     'Активность':'Activity', 'Адрес':'Address', 'Статус':'Status', 'Выбран:':'Selected:', 'Выбран: {{value}}':'Selected: {{value}}',
