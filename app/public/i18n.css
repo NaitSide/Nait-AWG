@@ -1,9 +1,8 @@
-.locale-switch{display:flex;align-items:center;justify-content:flex-end;gap:2px;color:var(--muted,#8b949e);font-size:10px}
+.locale-switch{display:flex;align-items:center;justify-content:flex-end;gap:6px;color:var(--muted,#8b949e);font-size:10px}
 .locale-switch button{display:inline-flex;align-items:center;justify-content:center;min-width:28px;min-height:28px;padding:3px 5px;border:0;border-radius:4px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer;transition:color .15s ease,background .15s ease}
 .locale-switch button[aria-pressed="true"]{color:#d7d0ff;background:rgba(123,110,170,.12)}
 .locale-switch button:hover{color:#e6edf3;background:rgba(123,110,170,.16)}
 .locale-switch button:focus-visible{outline:2px solid #b8a6ed;outline-offset:2px}
-.locale-switch-separator{opacity:.45;pointer-events:none}
 .login-header-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .login-header-row{margin-bottom:18px}
 .login-header-row .login-brand{min-width:0;margin-bottom:0}

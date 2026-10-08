@@ -12,6 +12,7 @@ test('language choice is available on login only, not in the main panel', () => 
   assert.match(login, /class="login-header-row"/);
   assert.match(login, /data-language="ru"/);
   assert.match(login, /data-language="en"/);
+  assert.doesNotMatch(login, /locale-switch-separator/);
   const panel = renderPanel({peers: [], profile: {}});
   assert.doesNotMatch(panel, /data-language=/);
   assert.match(panel, /action="\/logout"/);
@@ -80,4 +81,5 @@ test('language control has explicit buttons and accessible names', () => {
   assert.match(html, /aria-label="English"/);
   assert.match(html, /aria-pressed="false"/);
   assert.doesNotMatch(html, /<select|<img/);
+  assert.doesNotMatch(html, /locale-switch-separator|·/);
 });
