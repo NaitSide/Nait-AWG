@@ -1,6 +1,19 @@
 # Nait-AWG
 
-[![Русский](img/lang-ru.svg)](README.md) [![English](img/lang-en.svg)](README.en.md)
+<a href="README.md">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/lang-ru.svg">
+    <source media="(prefers-color-scheme: light)" srcset="img/lang-ru-light.svg">
+    <img alt="Русский" src="img/lang-ru-light.svg" width="48" height="26">
+  </picture>
+</a>
+<a href="README.en.md">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/lang-en.svg">
+    <source media="(prefers-color-scheme: light)" srcset="img/lang-en-light.svg">
+    <img alt="English" src="img/lang-en-light.svg" width="48" height="26">
+  </picture>
+</a>
 
 Веб-панель для управления своим VPN-сервером AmneziaWG.
 
