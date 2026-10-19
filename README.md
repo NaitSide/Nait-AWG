@@ -1,5 +1,7 @@
 # Nait-AWG
 
+[![Русский](img/lang-ru.svg)](README.md) [![English](img/lang-en.svg)](README.en.md)
+
 Веб-панель для управления своим VPN-сервером AmneziaWG.
 
 ![Список клиентов Nait-AWG](img/clients.png)
