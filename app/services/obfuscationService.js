@@ -4,7 +4,8 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const rules=require('./obfuscationRules');
 function failure(code,message,status=409){return Object.assign(new Error(message),{status,code});}
-function createObfuscationService({receiver,directory,clients,encrypt,decrypt,updateConfigs}){
+function createObfuscationService({receiver,directory,clients,encrypt,decrypt,updateConfigs,
+  rewriteConfig=(text,parameters)=>rules.rewrite(text,parameters,true)}){
   const journalPath=path.join(directory,'obfuscation-pending.json');
   function saveJournal(journal){
     const temporary=journalPath+'.'+crypto.randomUUID()+'.tmp';
@@ -40,7 +41,7 @@ function createObfuscationService({receiver,directory,clients,encrypt,decrypt,up
     if(!/^[a-f0-9]{64}$/.test(String(input?.expectedRevision||'')))throw failure('invalid_obfuscation_revision','Сначала проверьте параметры перед сохранением.',400);
     const preview=await inspect(input);
     if(!preview.changed.length)return {status:'ok',unchanged:true,updatedConfigs:0};
-    const updates=clients().map(client=>({fingerprint:client.publicKeyFingerprint,encryptedConfig:encrypt(rules.rewrite(decrypt(client.encryptedConfig),preview.parameters,true))}));
+    const updates=clients().map(client=>({fingerprint:client.publicKeyFingerprint,encryptedConfig:encrypt(rewriteConfig(decrypt(client.encryptedConfig),preview.parameters))}));
     saveJournal({before:preview.state.valuesRevision,after:rules.revision(preview.parameters),updates});
     let result;
     try{result=await receiver('/awg/obfuscation',{method:'POST',timeoutMs:120000,headers:{'content-type':'application/json','x-request-id':crypto.randomUUID()},body:JSON.stringify({parameters:preview.parameters,expectedRevision:preview.state.revision})});}

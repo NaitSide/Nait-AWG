@@ -1,0 +1,39 @@
+{
+  "format_version": 1,
+  "description": "Demo connection",
+  "hostName": "203.0.113.10",
+  "dns1": "1.1.1.1",
+  "dns2": "",
+  "defaultContainer": "amnezia-awg2",
+  "containers": [
+    {
+      "container": "amnezia-awg2",
+      "awg": {
+        "Jc": "5",
+        "Jmin": "10",
+        "Jmax": "50",
+        "S1": "12",
+        "S2": "12",
+        "S3": "12",
+        "S4": "12",
+        "H1": "1",
+        "H2": "2",
+        "H3": "3",
+        "H4": "4",
+        "HeaderProtectionKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=",
+        "RekeyAfterTime": "100-120",
+        "RekeyTimeout": "3-7",
+        "RejectAfterTime": "150-180",
+        "KeepaliveTimeout": "5-15",
+        "MaxHandshakeAttempts": "15-20",
+        "RandomTrailers": "on",
+        "DisableCookies": "on",
+        "I1": "<b 0x01020304>",
+        "port": "55424",
+        "transport_proto": "udp",
+        "protocol_version": "3.1",
+        "last_config": "{\"Jc\":\"5\",\"Jmin\":\"10\",\"Jmax\":\"50\",\"S1\":\"12\",\"S2\":\"12\",\"S3\":\"12\",\"S4\":\"12\",\"H1\":\"1\",\"H2\":\"2\",\"H3\":\"3\",\"H4\":\"4\",\"HeaderProtectionKey\":\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=\",\"RekeyAfterTime\":\"100-120\",\"RekeyTimeout\":\"3-7\",\"RejectAfterTime\":\"150-180\",\"KeepaliveTimeout\":\"5-15\",\"MaxHandshakeAttempts\":\"15-20\",\"RandomTrailers\":\"on\",\"DisableCookies\":\"on\",\"I1\":\"<b 0x01020304>\",\"config\":\"[Interface]\\nPrivateKey = AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM=\\nAddress = 10.42.7.4/32\\nDNS = 1.1.1.1\\nJc = 5\\nJmin = 10\\nJmax = 50\\nS1 = 12\\nS2 = 12\\nS3 = 12\\nS4 = 12\\nH1 = 1\\nH2 = 2\\nH3 = 3\\nH4 = 4\\nHeaderProtectionKey = BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=\\nRekeyAfterTime = 100-120\\nRekeyTimeout = 3-7\\nRejectAfterTime = 150-180\\nKeepaliveTimeout = 5-15\\nMaxHandshakeAttempts = 15-20\\nRandomTrailers = on\\nDisableCookies = on\\nI1 = <b 0x01020304>\\n\\n[Peer]\\nPublicKey = V9tLNZ8jrl4Ubk4lEgVnBHIlBjSMFQwUdT0Mkz0E1CE=\\nPresharedKey = DQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0=\\nEndpoint = 203.0.113.10:55424\\nAllowedIPs = 0.0.0.0/0, ::/0\\nPersistentKeepalive = 25\\n\",\"hostName\":\"203.0.113.10\",\"port\":55424,\"client_ip\":\"10.42.7.4\",\"client_priv_key\":\"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM=\",\"client_pub_key\":\"Xf7dO2vUf2+ijuFdlp1bsOpTd01Ii9r53xxuASSz7yI=\",\"clientId\":\"Xf7dO2vUf2+ijuFdlp1bsOpTd01Ii9r53xxuASSz7yI=\",\"server_pub_key\":\"V9tLNZ8jrl4Ubk4lEgVnBHIlBjSMFQwUdT0Mkz0E1CE=\",\"allowed_ips\":[\"0.0.0.0/0\",\"::/0\"],\"psk_key\":\"DQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0=\",\"persistent_keep_alive\":\"25\"}"
+      }
+    }
+  ]
+}

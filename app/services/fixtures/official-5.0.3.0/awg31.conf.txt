@@ -1,0 +1,32 @@
+[Interface]
+Address = 10.42.7.3/32
+DNS = 8.8.8.8, 1.0.0.1
+PrivateKey = AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=
+Jc = 5
+Jmin = 10
+Jmax = 50
+S1 = 12
+S2 = 12
+S3 = 12
+S4 = 12
+H1 = 1
+H2 = 2
+H3 = 3
+H4 = 4
+I1 = <b 0x01020304>
+HeaderProtectionKey = BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+RekeyAfterTime = 100-120
+RekeyTimeout = 3-7
+RejectAfterTime = 150-180
+KeepaliveTimeout = 5-15
+MaxHandshakeAttempts = 15-20
+RandomTrailers = on
+DisableCookies = on
+
+[Peer]
+PublicKey = V9tLNZ8jrl4Ubk4lEgVnBHIlBjSMFQwUdT0Mkz0E1CE=
+PresharedKey = DAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = 203.0.113.10:55424
+PersistentKeepalive = 25-35
+

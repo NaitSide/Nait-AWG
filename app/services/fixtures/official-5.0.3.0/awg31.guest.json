@@ -1,0 +1,44 @@
+{
+  "containers": [
+    {
+      "awg": {
+        "DisableCookies": "on",
+        "H1": "1",
+        "H2": "2",
+        "H3": "3",
+        "H4": "4",
+        "HeaderProtectionKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=",
+        "I1": "<b 0x01020304>",
+        "I2": "",
+        "I3": "",
+        "I4": "",
+        "I5": "",
+        "Jc": "5",
+        "Jmax": "50",
+        "Jmin": "10",
+        "KeepaliveTimeout": "5-15",
+        "MaxHandshakeAttempts": "15-20",
+        "RandomTrailers": "on",
+        "RejectAfterTime": "150-180",
+        "RekeyAfterTime": "100-120",
+        "RekeyTimeout": "3-7",
+        "S1": "12",
+        "S2": "12",
+        "S3": "12",
+        "S4": "12",
+        "last_config": "{\"DisableCookies\":\"on\",\"H1\":\"1\",\"H2\":\"2\",\"H3\":\"3\",\"H4\":\"4\",\"HeaderProtectionKey\":\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=\",\"I1\":\"<b 0x01020304>\",\"Jc\":\"5\",\"Jmax\":\"50\",\"Jmin\":\"10\",\"KeepaliveTimeout\":\"5-15\",\"MaxHandshakeAttempts\":\"15-20\",\"RandomTrailers\":\"on\",\"RejectAfterTime\":\"150-180\",\"RekeyAfterTime\":\"100-120\",\"RekeyTimeout\":\"3-7\",\"S1\":\"12\",\"S2\":\"12\",\"S3\":\"12\",\"S4\":\"12\",\"allowed_ips\":[\"0.0.0.0/0\",\"::/0\"],\"clientId\":\"pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=\",\"client_ip\":\"10.42.7.2\",\"client_priv_key\":\"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=\",\"client_pub_key\":\"pOCSkrZRwni5dyxWn1+puxPZBrRqtoyd+dwrRAn4ogk=\",\"config\":\"[Interface]\\nAddress = 10.42.7.2/32\\nDNS = $PRIMARY_DNS, $SECONDARY_DNS\\nPrivateKey = AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=\\nJc = 5\\nJmin = 10\\nJmax = 50\\nS1 = 12\\nS2 = 12\\nS3 = 12\\nS4 = 12\\nH1 = 1\\nH2 = 2\\nH3 = 3\\nH4 = 4\\nI1 = <b 0x01020304>\\nHeaderProtectionKey = BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=\\nRekeyAfterTime = 100-120\\nRekeyTimeout = 3-7\\nRejectAfterTime = 150-180\\nKeepaliveTimeout = 5-15\\nMaxHandshakeAttempts = 15-20\\nRandomTrailers = on\\nDisableCookies = on\\n\\n[Peer]\\nPublicKey = V9tLNZ8jrl4Ubk4lEgVnBHIlBjSMFQwUdT0Mkz0E1CE=\\nPresharedKey = CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws=\\nAllowedIPs = 0.0.0.0/0, ::/0\\nEndpoint = 203.0.113.10:55424\\nPersistentKeepalive = 25-35\\n\",\"hostName\":\"203.0.113.10\",\"mtu\":\"1376\",\"persistent_keep_alive\":\"25-35\",\"port\":55424,\"psk_key\":\"CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws=\",\"server_pub_key\":\"V9tLNZ8jrl4Ubk4lEgVnBHIlBjSMFQwUdT0Mkz0E1CE=\"}",
+        "port": "55424",
+        "protocol_version": "3.1",
+        "subnet_address": "10.42.7.0",
+        "transport_proto": "udp"
+      },
+      "container": "amnezia-awg2"
+    }
+  ],
+  "defaultContainer": "amnezia-awg2",
+  "description": "Demo connection",
+  "dns1": "8.8.8.8",
+  "dns2": "1.0.0.1",
+  "format_version": 1,
+  "hostName": "203.0.113.10"
+}

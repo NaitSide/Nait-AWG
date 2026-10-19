@@ -11,7 +11,8 @@ const QRCode = require('qrcode');
 const { decryptBackup, encryptBackup, plainBackup, validatePassphrase } = require('./backupService');
 const { createUsageStore, validState: validUsageState } = require('./usageService');
 const { parseClientConfig } = require('./clientConfigService');
-const { buildAmneziaVpn } = require('./clientExportService');
+const { buildAmneziaVpn, createAmneziaGuest, encodeAmneziaGuest } = require('./clientExportService');
+const { PARAMETER_NAMES, clientSettings, saveProfile, readProfile, rewriteProfile } = require('./clientProfileService');
 const { buildAmneziaQrSeries } = require('./clientQrService');
 const { createObfuscationService } = require('./obfuscationService');
 const obfuscationRules = require('./obfuscationRules');
@@ -25,13 +26,7 @@ const CYRILLIC_LATIN = {
   К:'K', Л:'L', М:'M', Н:'N', О:'O', П:'P', Р:'R', С:'S', Т:'T', У:'U', Ф:'F',
   Х:'Kh', Ц:'Ts', Ч:'Ch', Ш:'Sh', Щ:'Sch', Ъ:'', Ы:'Y', Ь:'', Э:'E', Ю:'Yu', Я:'Ya'
 };
-const CLIENT_PARAMETER_ORDER = [
-  'Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4',
-  'HeaderProtectionKey', 'ContentPaddingAddition', 'RekeyAfterTime',
-  'RekeyTimeout', 'RejectAfterTime', 'KeepaliveTimeout',
-  'MaxHandshakeAttempts', 'RandomTrailers', 'DisableCookies', 'I1', 'I2',
-  'I3', 'I4', 'I5'
-];
+const CLIENT_PARAMETER_ORDER = PARAMETER_NAMES;
 
 function createHttpError(status, code, message) {
   const error = new Error(message);
@@ -201,7 +196,8 @@ function safeClientLabel(label) {
 function buildConfig({ privateKey, address, profile, presharedKey, endpointHost, dns, allowedIps, keepalive }) {
   const clientParameters = profile.clientInterfaceParameters || {};
   const parameterLines = CLIENT_PARAMETER_ORDER
-    .filter((name) => Object.prototype.hasOwnProperty.call(clientParameters, name))
+    .filter((name) => clientParameters[name] !== undefined && String(clientParameters[name]) !== ''
+      && (!['RandomTrailers','DisableCookies'].includes(name) || String(clientParameters[name]).toLowerCase() !== 'off'))
     .map((name) => `${name} = ${clientParameters[name]}`);
   return [
     '[Interface]', `PrivateKey = ${privateKey}`, `Address = ${address}`, `DNS = ${dns}`,
@@ -547,16 +543,16 @@ function remapTraffic(usageHistory, mappings) {
 }
 
 function createAwgService(env = process.env, dependencies = {}) {
-  const receiver = makeReceiverClient(env);
+  const receiver = dependencies.receiver || makeReceiverClient(env);
   const dataKey = base64Key(env.NAIT_AWG_DATA_KEY, 'NAIT_AWG_DATA_KEY');
   const dataPath = path.resolve(env.NAIT_AWG_DATA_PATH || './data/clients.db');
   const clientStore = createClientStore(dataPath);
   const noteStore = createNoteStore(path.join(path.dirname(dataPath), 'peer-notes.json'));
   const usageStore = createUsageStore(path.join(path.dirname(dataPath), 'traffic-history.json'));
   const endpointHost = String(env.PUBLIC_ENDPOINT_HOST || '').trim();
-  const dns = String(env.CLIENT_DNS || '1.1.1.1').trim();
+  const dns = String(env.CLIENT_DNS || '1.1.1.1, 1.0.0.1').trim();
   const allowedIps = String(env.CLIENT_ALLOWED_IPS || '0.0.0.0/0, ::/0').trim();
-  const keepalive = Number(env.CLIENT_PERSISTENT_KEEPALIVE || 25);
+  const keepalive = String(env.CLIENT_PERSISTENT_KEEPALIVE || 'auto').trim();
   const containerName = String(env.AWG_CONTAINER_NAME || 'amnezia-awg').trim();
   const readAwgConfig = dependencies.readAwgConfig || (async () => {
     const { stdout } = await execFileAsync('docker', ['exec', containerName, 'cat', '/opt/amnezia/awg/awg0.conf'],
@@ -593,7 +589,16 @@ function createAwgService(env = process.env, dependencies = {}) {
   const obfuscation = createObfuscationService({receiver,directory:path.dirname(dataPath),
     clients:()=>Array.from(clientStore.activeByFingerprint().values()).filter(client=>client.encryptedConfig),
     encrypt:text=>encrypt(text,dataKey),decrypt:text=>decrypt(text,dataKey),
+    rewriteConfig:rewriteProfile,
     updateConfigs:updates=>clientStore.updateConfigs(updates)});
+  function encryptedProfile(config, label, profile, settings) {
+    const guest = createAmneziaGuest(config, label, CLIENT_PARAMETER_ORDER, {
+      mtu: settings.mtu, subnetAddress: profile.tunnelSubnet.split('/')[0],
+      serverParameters: profile.clientInterfaceParameters,
+      container: containerName === 'amnezia-awg' ? 'amnezia-awg' : 'amnezia-awg2'
+    });
+    return encrypt(saveProfile(config, guest), dataKey);
+  }
   function withGateLock(task) {
     const runTask=async()=>{await obfuscation.recover();return task();};
     const result = gateQueue.then(runTask, runTask);
@@ -943,10 +948,11 @@ function createAwgService(env = process.env, dependencies = {}) {
           const state = { clients: [], gates: [] };
           const metadata = { version: 1, notes: {}, telegrams: {} };
           for (const peer of staged) {
+            const settings = clientSettings(env, clientProfile.clientInterfaceParameters || {});
             const clientConfig = buildConfig({ privateKey: peer.privateKey, address: peer.address, profile: clientProfile,
-              presharedKey: peer.presharedKey, endpointHost, dns, allowedIps, keepalive });
+              presharedKey: peer.presharedKey, endpointHost, ...settings });
             state.clients.push({ clientId: peer.clientId, label: peer.label, receiverLabel: peer.receiverLabel,
-              publicKeyFingerprint: peer.fingerprint, address: peer.address, encryptedConfig: encrypt(clientConfig, dataKey),
+              publicKeyFingerprint: peer.fingerprint, address: peer.address, encryptedConfig: encryptedProfile(clientConfig, peer.label, clientProfile, settings),
               status: 'active', createdAt: peer.createdAt, deletedAt: null });
             state.gates.push({ publicKeyFingerprint: peer.fingerprint, publicKey: peer.publicKey,
               deviceId: peer.clientId, address: peer.address, createdAt: peer.createdAt });
@@ -986,14 +992,15 @@ function createAwgService(env = process.env, dependencies = {}) {
     const label = String(input?.label || '').trim();
     const receiverLabel = safeClientLabel(label);
     if (!endpointHost) throw createHttpError(500, 'endpoint_not_configured', 'PUBLIC_ENDPOINT_HOST is required');
-    if (!Number.isInteger(keepalive) || keepalive < 0 || keepalive > 65535) throw createHttpError(500, 'invalid_keepalive', 'CLIENT_PERSISTENT_KEEPALIVE is invalid');
     const [profile, current] = await Promise.all([receiver('/awg/profile'), receiver('/awg/peers')]);
     if (profile.status !== 'ok' || current.status !== 'ok') throw createHttpError(503, 'awg_unavailable', 'AWG node is unavailable');
+    const settings = clientSettings(env, profile.clientInterfaceParameters || {});
     const reserved = clientStore.reservedAddresses().map((entry) => ({ allowedIps: [entry.address] }));
     const address = allocateAddress(profile.tunnelSubnet, profile.interfaceAddress, [...current.peers, ...reserved]);
-    const material = await generateKeyMaterial(containerName);
+    const material = await newKeyMaterial();
     const clientId = `awg-${crypto.randomUUID()}`;
-    const config = buildConfig({ privateKey: material.privateKey, address, profile, presharedKey: material.presharedKey, endpointHost, dns, allowedIps, keepalive });
+    const config = buildConfig({ privateKey: material.privateKey, address, profile, presharedKey: material.presharedKey, endpointHost, ...settings });
+    const encryptedConfig = encryptedProfile(config, label, profile, settings);
     const idempotencyKey = crypto.randomUUID();
     await receiver('/awg/peers', {
       method: 'POST',
@@ -1002,7 +1009,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     });
     const fingerprint = createFingerprint(material.publicKey);
     clientStore.insert({ clientId, label, receiverLabel, publicKeyFingerprint: fingerprint, address,
-      encryptedConfig: encrypt(config, dataKey), createdAt: new Date().toISOString() });
+      encryptedConfig, createdAt: new Date().toISOString() });
     return { id: fingerprint, publicKeyFingerprint: fingerprint, label, address, state: 'inactive', status: 'active', hasConfig: true, canDelete: true };
   }
 
@@ -1010,7 +1017,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     return withGateLock(async()=>{
       const client = clientStore.findActive(fingerprint);
       if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Nait-AWG or has been removed');
-      return { client, config: decrypt(client.encryptedConfig, dataKey) };
+      return { client, ...readProfile(decrypt(client.encryptedConfig, dataKey)) };
     });
   }
 
@@ -1018,8 +1025,9 @@ function createAwgService(env = process.env, dependencies = {}) {
     if (!['amneziawg', 'amneziavpn'].includes(format)) {
       throw createHttpError(400, 'unsupported_client_format', 'Неподдерживаемый формат подключения.');
     }
-    const { client, config } = await getConfig(fingerprint);
-    return { client, config: format === 'amneziavpn' ? buildAmneziaVpn(config, client.label, CLIENT_PARAMETER_ORDER) : config,
+    const { client, config, guest } = await getConfig(fingerprint);
+    return { client, config: format === 'amneziavpn'
+      ? (guest ? encodeAmneziaGuest(guest, client.label) : buildAmneziaVpn(config, client.label, CLIENT_PARAMETER_ORDER, {legacy:true})) : config,
       extension: format === 'amneziavpn' ? 'vpn' : 'conf' };
   }
 
@@ -1063,7 +1071,8 @@ function createAwgService(env = process.env, dependencies = {}) {
       // Keep the existing gate device identity when attaching configuration.
       clientStore.insert({ clientId: context.deviceId, label, receiverLabel,
         publicKeyFingerprint: fingerprint, address: context.address,
-        encryptedConfig: encrypt(parsed.config, dataKey), createdAt: new Date().toISOString() });
+        encryptedConfig: parsed.guest ? encrypt(saveProfile(parsed.config, parsed.guest), dataKey)
+          : encryptedProfile(parsed.config, label, profile, clientSettings(env, parsed.client)), createdAt: new Date().toISOString() });
       return { status: 'ok', id: fingerprint, hasConfig: true };
     });
   }
