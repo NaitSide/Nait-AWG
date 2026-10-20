@@ -2,6 +2,13 @@
 // Russian source messages are stable gettext-style keys. Do not translate user data.
 (() => {
   const en = {
+    "Сети Meta целиком: через VPN пойдут также Facebook и Instagram. DNS дополняет адреса WhatsApp. Звонки и внешние CDN могут использовать другие адреса.": "All Meta networks: Facebook and Instagram also use the VPN. DNS adds WhatsApp addresses. Calls and external CDNs may use other addresses.",
+    "Нажмите «Обновить IP», чтобы получить адреса сайта, API и части CDN TikTok. Полное покрытие видео и региональных серверов не гарантируется.": "Click Update IP to resolve the TikTok website, API and selected CDN domains. Complete coverage of video and regional servers is not guaranteed.",
+    "DNS-адреса сайта, Gateway и медиа Discord. Голосовые каналы используют динамические серверы и могут потребовать дополнительных маршрутов.": "DNS addresses for the Discord website, Gateway and media. Voice channels use dynamic servers and may need additional routes.",
+    "DNS-адреса подключения, хранилища, медиа и сервера групповых звонков Signal. Прямые звонки и внешние зависимости могут использовать другие адреса.": "DNS addresses for Signal connections, storage, media and the group-call server. Direct calls and external dependencies may use other addresses.",
+    "DNS-адреса сайта, авторизации, медиа и отдельных серверов Viber. Полное покрытие мессенджера и звонков не гарантируется.": "DNS addresses for the Viber website, authentication, media and selected servers. Complete coverage of messaging and calls is not guaranteed.",
+    "Сети Meta целиком: через VPN пойдут также Instagram и WhatsApp. DNS дополняет адреса Facebook и Messenger. Внешние CDN и звонки могут использовать другие адреса.": "All Meta networks: Instagram and WhatsApp also use the VPN. DNS adds Facebook and Messenger addresses. External CDNs and calls may use other addresses.",
+    "DNS-адреса X/Twitter, API, коротких ссылок, изображений и видео. Полное покрытие региональных CDN не гарантируется.": "DNS addresses for X/Twitter, API, short links, images and video. Complete coverage of regional CDNs is not guaranteed.",
     "Как работает маскировка": "How obfuscation works",
     "Поля I1–I5 задают дополнительные пакеты, отправляемые перед установкой VPN-соединения. Они позволяют имитировать признаки другого сетевого трафика.": "Fields I1–I5 define additional packets sent before setting up a VPN connection. They can imitate characteristics of other network traffic.",
     "— система доменных имён. Этот профиль добавляет пакет, похожий на DNS-запрос.": "— the domain name system. This profile adds a packet resembling a DNS query.",

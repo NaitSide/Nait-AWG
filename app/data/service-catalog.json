@@ -225,6 +225,188 @@
       "ipv6Count": 327
     },
     {
+      "id": "whatsapp",
+      "name": {
+        "ru": "WhatsApp",
+        "en": "WhatsApp"
+      },
+      "description": {
+        "ru": "Сети Meta целиком: через VPN пойдут также Facebook и Instagram. DNS дополняет адреса WhatsApp. Звонки и внешние CDN могут использовать другие адреса.",
+        "en": "All Meta networks: Facebook and Instagram also use the VPN. DNS adds WhatsApp addresses. Calls and external CDNs may use other addresses."
+      },
+      "source": "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS32934",
+      "available": true,
+      "ipv4": [
+        "31.13.24.0/21",
+        "31.13.64.0/18",
+        "45.64.40.0/22",
+        "57.141.0.0/24",
+        "57.141.2.0/23",
+        "57.141.4.0/23",
+        "57.141.6.0/24",
+        "57.141.8.0/24",
+        "57.141.10.0/24",
+        "57.141.12.0/23",
+        "57.141.14.0/24",
+        "57.141.16.0/22",
+        "57.141.20.0/24",
+        "57.141.22.0/24",
+        "57.141.24.0/24",
+        "57.144.0.0/14",
+        "66.220.144.0/20",
+        "69.63.176.0/20",
+        "69.171.224.0/19",
+        "74.119.76.0/22",
+        "102.132.96.0/20",
+        "103.4.96.0/22",
+        "129.134.0.0/17",
+        "157.240.0.0/17",
+        "157.240.192.0/18",
+        "163.70.128.0/17",
+        "163.77.132.0/23",
+        "163.77.136.0/23",
+        "163.77.160.0/20",
+        "173.252.64.0/18",
+        "179.60.192.0/22",
+        "185.60.216.0/22",
+        "185.89.216.0/22",
+        "204.15.20.0/22"
+      ],
+      "sourceVersion": "2026-10-19T16:00:00",
+      "ipv6Count": 327
+    },
+    {
+      "id": "tiktok",
+      "name": {
+        "ru": "TikTok",
+        "en": "TikTok"
+      },
+      "description": {
+        "ru": "Нажмите «Обновить IP», чтобы получить адреса сайта, API и части CDN TikTok. Полное покрытие видео и региональных серверов не гарантируется.",
+        "en": "Click Update IP to resolve the TikTok website, API and selected CDN domains. Complete coverage of video and regional servers is not guaranteed."
+      },
+      "source": "https://www.tiktok.com/",
+      "available": false,
+      "ipv4": [],
+      "sourceVersion": "2026-10-20",
+      "ipv6Count": 0
+    },
+    {
+      "id": "discord",
+      "name": {
+        "ru": "Discord",
+        "en": "Discord"
+      },
+      "description": {
+        "ru": "DNS-адреса сайта, Gateway и медиа Discord. Голосовые каналы используют динамические серверы и могут потребовать дополнительных маршрутов.",
+        "en": "DNS addresses for the Discord website, Gateway and media. Voice channels use dynamic servers and may need additional routes."
+      },
+      "source": "https://docs.discord.com/developers/events/gateway",
+      "available": false,
+      "ipv4": [],
+      "sourceVersion": "2026-10-20",
+      "ipv6Count": 0
+    },
+    {
+      "id": "signal",
+      "name": {
+        "ru": "Signal",
+        "en": "Signal"
+      },
+      "description": {
+        "ru": "DNS-адреса подключения, хранилища, медиа и сервера групповых звонков Signal. Прямые звонки и внешние зависимости могут использовать другие адреса.",
+        "en": "DNS addresses for Signal connections, storage, media and the group-call server. Direct calls and external dependencies may use other addresses."
+      },
+      "source": "https://support.signal.org/hc/en-us/articles/360007320291-Firewall-and-Internet-settings",
+      "available": false,
+      "ipv4": [],
+      "sourceVersion": "2026-10-20",
+      "ipv6Count": 0
+    },
+    {
+      "id": "viber",
+      "name": {
+        "ru": "Viber",
+        "en": "Viber"
+      },
+      "description": {
+        "ru": "DNS-адреса сайта, авторизации, медиа и отдельных серверов Viber. Полное покрытие мессенджера и звонков не гарантируется.",
+        "en": "DNS addresses for the Viber website, authentication, media and selected servers. Complete coverage of messaging and calls is not guaranteed."
+      },
+      "source": "https://www.viber.com/",
+      "available": false,
+      "ipv4": [],
+      "sourceVersion": "2026-10-20",
+      "ipv6Count": 0
+    },
+    {
+      "id": "facebook",
+      "name": {
+        "ru": "Facebook",
+        "en": "Facebook"
+      },
+      "description": {
+        "ru": "Сети Meta целиком: через VPN пойдут также Instagram и WhatsApp. DNS дополняет адреса Facebook и Messenger. Внешние CDN и звонки могут использовать другие адреса.",
+        "en": "All Meta networks: Instagram and WhatsApp also use the VPN. DNS adds Facebook and Messenger addresses. External CDNs and calls may use other addresses."
+      },
+      "source": "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS32934",
+      "available": true,
+      "ipv4": [
+        "31.13.24.0/21",
+        "31.13.64.0/18",
+        "45.64.40.0/22",
+        "57.141.0.0/24",
+        "57.141.2.0/23",
+        "57.141.4.0/23",
+        "57.141.6.0/24",
+        "57.141.8.0/24",
+        "57.141.10.0/24",
+        "57.141.12.0/23",
+        "57.141.14.0/24",
+        "57.141.16.0/22",
+        "57.141.20.0/24",
+        "57.141.22.0/24",
+        "57.141.24.0/24",
+        "57.144.0.0/14",
+        "66.220.144.0/20",
+        "69.63.176.0/20",
+        "69.171.224.0/19",
+        "74.119.76.0/22",
+        "102.132.96.0/20",
+        "103.4.96.0/22",
+        "129.134.0.0/17",
+        "157.240.0.0/17",
+        "157.240.192.0/18",
+        "163.70.128.0/17",
+        "163.77.132.0/23",
+        "163.77.136.0/23",
+        "163.77.160.0/20",
+        "173.252.64.0/18",
+        "179.60.192.0/22",
+        "185.60.216.0/22",
+        "185.89.216.0/22",
+        "204.15.20.0/22"
+      ],
+      "sourceVersion": "2026-10-19T16:00:00",
+      "ipv6Count": 327
+    },
+    {
+      "id": "twitter",
+      "name": {
+        "ru": "X / Twitter",
+        "en": "X / Twitter"
+      },
+      "description": {
+        "ru": "DNS-адреса X/Twitter, API, коротких ссылок, изображений и видео. Полное покрытие региональных CDN не гарантируется.",
+        "en": "DNS addresses for X/Twitter, API, short links, images and video. Complete coverage of regional CDNs is not guaranteed."
+      },
+      "source": "https://help.x.com/en/using-x/url-shortener",
+      "available": false,
+      "ipv4": [],
+      "sourceVersion": "2026-10-20",
+      "ipv6Count": 0
+    },
+    {
       "id": "openai",
       "name": {
         "ru": "ChatGPT / OpenAI",

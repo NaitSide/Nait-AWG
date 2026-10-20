@@ -36,3 +36,49 @@ test('concurrent refreshes are coalesced and different concurrent selections are
   await assert.rejects(resolver.refresh({services:['youtube']}),{code:'routing_dns_busy'});release();
   assert.deepEqual(await first,await second);assert.equal(calls,6);
 });
+
+test('WhatsApp and TikTok refresh independently and survive saved routing/export without selecting unrelated services',async()=>{
+  const {catalog,freezeRouting,storedRouting,routesFor}=require('./routingService');
+  const {domains}=require('./routingDnsService');
+  assert.deepEqual(Object.keys(domains).sort(),catalog.services.map(s=>s.id).sort());
+  const calls=[];
+  const resolver=createRoutingDnsService({fetch:async url=>{
+    const name=url.searchParams.get('name');calls.push(name);
+    return answer([name.includes('whatsapp')?'1.1.1.1':'9.9.9.9']);
+  }});
+  const result=await resolver.refresh({services:['whatsapp','tiktok']});
+  assert.deepEqual(result.failed,[]);assert.deepEqual(result.partial,[]);
+  assert.deepEqual(result.resolved.whatsapp.ipv4,['1.1.1.1/32']);
+  assert.deepEqual(result.resolved.tiktok.ipv4,['9.9.9.9/32']);
+  assert(calls.includes('web.whatsapp.com'));assert(calls.includes('mmg.whatsapp.net'));
+  assert(calls.includes('www.tiktok.com'));assert(calls.includes('v16-webapp-prime.tiktok.com'));
+  const policy=freezeRouting({mode:'selected',services:['whatsapp','tiktok'],resolved:result.resolved});
+  assert.deepEqual(storedRouting(policy),policy);
+  assert.deepEqual(policy.services,['tiktok','whatsapp']);
+  const exported=routesFor(policy,'8.8.8.8');
+  assert(exported.includes('1.1.1.1/32'));assert(exported.includes('9.9.9.9/32'));
+  assert(!exported.includes('0.0.0.0/0'));
+});
+
+test('new messenger and social profiles keep DNS snapshots separate and deduplicate shared Meta routes',async()=>{
+  const {catalog,freezeRouting,storedRouting,routesFor}=require('./routingService');
+  const {domains}=require('./routingDnsService');
+  const ids=['discord','signal','viber','facebook','twitter'];
+  const addresses=Object.fromEntries(ids.map((id,i)=>[id,'9.9.9.'+(10+i)]));
+  const resolver=createRoutingDnsService({fetch:async url=>{
+    const id=ids.find(id=>domains[id].includes(url.searchParams.get('name')));
+    assert(id);return answer([addresses[id]]);
+  }});
+  const result=await resolver.refresh({services:ids});
+  assert.deepEqual(result.failed,[]);assert.deepEqual(result.partial,[]);
+  for(const id of ids){
+    assert.deepEqual(result.resolved[id].ipv4,[addresses[id]+'/32']);
+    const policy=freezeRouting({mode:'selected',services:[id],resolved:{[id]:result.resolved[id]}});
+    assert.deepEqual(policy.services,[id]);assert.deepEqual(storedRouting(policy),policy);
+    const routes=routesFor(policy,'1.1.1.1');assert(routes.includes(addresses[id]+'/32'));
+    for(const other of ids.filter(other=>other!==id))assert(!routes.includes(addresses[other]+'/32'));
+  }
+  const meta=freezeRouting({mode:'selected',services:['instagram','whatsapp','facebook']});
+  assert.deepEqual(meta.ipv4,catalog.services.find(s=>s.id==='instagram').ipv4);
+  assert.deepEqual(storedRouting(meta),meta);
+});

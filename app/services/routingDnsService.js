@@ -6,7 +6,14 @@ const domains = Object.freeze({
   youtube:['www.youtube.com','youtubei.googleapis.com','i.ytimg.com','redirector.googlevideo.com'],
   instagram:['www.instagram.com','i.instagram.com','graph.instagram.com'],
   openai:['chatgpt.com','auth.openai.com','api.openai.com','cdn.oaistatic.com'],
-  anthropic:['claude.ai','api.anthropic.com']
+  anthropic:['claude.ai','api.anthropic.com'],
+  whatsapp:['www.whatsapp.com','web.whatsapp.com','g.whatsapp.net','mmg.whatsapp.net','pps.whatsapp.net'],
+  tiktok:['www.tiktok.com','m.tiktok.com','api16-normal-c-useast1a.tiktokv.com','api16-normal-c-alisg.tiktokv.com','v16-webapp-prime.tiktok.com','p16-sign-va.tiktokcdn.com','p16-sign-sg.tiktokcdn.com'],
+  discord:["discord.com","gateway.discord.gg","cdn.discordapp.com","media.discordapp.net","discord.gg","discordapp.com","images-ext-1.discordapp.net","images-ext-2.discordapp.net","latency.discord.media"],
+  signal:["chat.signal.org","storage.signal.org","cdn.signal.org","cdn2.signal.org","cdn3.signal.org","cdsi.signal.org","svr2.signal.org","contentproxy.signal.org","sfu.voip.signal.org","signal.org","signal.group","signal.me"],
+  viber:["www.viber.com","secure.viber.com","account.viber.com","media.viber.com","pg.cdn.viber.com","share.viber.com","share.cdn.viber.com","content.cdn.viber.com","aloha.viber.com","ptt.viber.com","stickers-search.viber.com"],
+  facebook:["www.facebook.com","m.facebook.com","graph.facebook.com","static.xx.fbcdn.net","scontent.xx.fbcdn.net","connect.facebook.net","www.messenger.com","edge-mqtt.facebook.com"],
+  twitter:["x.com","www.x.com","api.x.com","twitter.com","api.twitter.com","t.co","abs.twimg.com","pbs.twimg.com","video.twimg.com"]
 });
 const providers = [{name:'Cloudflare',url:'https://cloudflare-dns.com/dns-query'},
   {name:'Google',url:'https://dns.google/resolve'}];

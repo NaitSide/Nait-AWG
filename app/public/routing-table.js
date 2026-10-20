@@ -62,7 +62,7 @@
         const input=this.checkbox(service.name.ru,this.draft.services.includes(service.id),'service',service.id);
         input.dataset.available=String(available);check.append(input);
         const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);
-        const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta'};
+        const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta'};
         const description=node('small','route-description',!available?'Обновите IP через DNS':!service.available?'DNS-адреса':labels[service.id]);
         name.append(description);this.addresses(addresses,[...new Set([...(resolved?.ipv4||[]),...service.ipv4])]);
         if(resolved) {
