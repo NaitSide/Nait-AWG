@@ -20,6 +20,7 @@
     "Профиль выше имеет приоритет при выдаче конфигов. Сохранение изменённых I1–I5 создаст пользовательский профиль.": "The profile above takes priority when exporting configs. Saving changed I1–I5 creates a custom profile.",
     "Конфиг слишком велик для экспорта AmneziaVPN.": "The config is too large for AmneziaVPN export.",
     "Маскировка":"Obfuscation",
+    "Туннелирование":"Tunneling",
     "Раздельный туннель":"Split tunneling",
     "Раздельное туннелирование":"Split tunneling",
     "Общие настройки маскировки":"General obfuscation settings",
@@ -325,5 +326,39 @@
     'Диапазон идентификатора типа пакета':'Packet type identifier range',
     'Нет handshake':'No handshake', 'Существующий':'Existing', 'Есть':'Available', 'AWG недоступен':'AWG unavailable', 'Нода недоступна':'Node unavailable'
   };
+  Object.assign(en,{
+  "Сервисы и маршруты VPN": "VPN services and routes",
+  "Выбор": "Selection",
+  "Сервис": "Service",
+  "IP-адреса и подсети": "IP addresses and subnets",
+  "Обновить IP": "Update IPs",
+  "Добавить свой сервис": "Add a custom service",
+  "Отметьте сервисы, которые должны работать через VPN.": "Select the services that should use the VPN.",
+  "Все внешние адреса идут через VPN. Локальные сети можно оставить напрямую.": "All external addresses use the VPN. Local networks can stay directly accessible.",
+  "«Обновить IP» запрашивает адреса доменов через Cloudflare и Google DNS и дополняет сети сервисов. Изменения применяются после сохранения. DNS не охватывает все адреса CDN и приложений.": "“Update IPs” queries service domains through Cloudflare and Google DNS and supplements service networks. Save to apply the changes. DNS cannot cover every CDN and app address.",
+  "Отметьте «Локальные сети», чтобы оставить их доступными напрямую. Собственные IP и подсети в остальных строках направляются через VPN.": "Select “Local networks” to keep them directly accessible. Custom IPs and subnets in other rows use the VPN.",
+  "В выборочном режиме IPv6 идёт через обычное подключение. Большой список может не поместиться в QR AmneziaWG — используйте файл .conf или составной QR AmneziaVPN.": "In selective mode, IPv6 uses your normal connection. A large list may not fit an AmneziaWG QR code — use a .conf file or a multipart AmneziaVPN QR code.",
+  "Адресов пока нет": "No addresses yet",
+  "Обновите IP через DNS": "Update IPs via DNS",
+  "Адреса получены через DNS; охват зависит от доменов.": "Addresses resolved via DNS; coverage depends on the domains.",
+  "Направлять через VPN": "Route through VPN",
+  "Название сервиса": "Service name",
+  "Название своего сервиса": "Custom service name",
+  "Удалить свою строку": "Remove custom row",
+  "Свои IPv4-адреса и подсети": "Custom IPv4 addresses and subnets",
+  "Оставлять локальные сети напрямую": "Keep local networks directly accessible",
+  "Локальные сети": "Local networks",
+  "Напрямую, без VPN": "Direct connection",
+  "В полном режиме также исключаются локальные IPv6-сети.": "Full mode also excludes local IPv6 networks.",
+  "Укажите название и хотя бы один IPv4-адрес или подсеть для каждой своей строки.": "Enter a name and at least one IPv4 address or subnet for each custom row.",
+  "Запрашиваем адреса через Cloudflare и Google DNS…": "Querying addresses through Cloudflare and Google DNS…",
+  "Часть DNS-запросов не выполнена. Доступные адреса добавлены; прежние списки сохранены.": "Some DNS queries failed. Available addresses were added; previous lists were preserved.",
+  "IP-адреса обновлены. Сохраните настройки и скачайте конфиги заново.": "IP addresses updated. Save settings and download your configs again.",
+  "DNS-серверы не вернули адреса. Предыдущие списки сохранены.": "DNS servers returned no addresses. Previous lists were preserved.",
+  "Обновление адресов уже выполняется. Дождитесь результата.": "Address update is already running. Wait for the result.",
+  "Выберите сервисы из списка.": "Select services from the list.",
+  "Некорректный каталог или выбор сервисов.": "Invalid service list or selection."
+});
+  Object.assign(en,{"Сети Telegram":"Telegram networks","Сети Google":"Google networks","Сети Meta":"Meta networks","DNS-адреса":"DNS addresses","Слишком много DNS-адресов для одного сервиса. Предыдущий список сохранён.":"Too many DNS addresses for one service. The previous list was preserved.","Для раздельного туннелирования нужен числовой IPv4-адрес VPN-сервера.":"Split tunneling requires a numeric IPv4 address for the VPN server."});
   window.NaitTranslations = Object.freeze({ru:Object.freeze(Object.fromEntries(Object.keys(en).map(key=>[key,key]))),en:Object.freeze(en)});
 })();

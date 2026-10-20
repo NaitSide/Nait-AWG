@@ -119,6 +119,30 @@ test('client policies preserve ciphertext, key material and server peers across 
   assert.deepEqual(decoded,packed);
   assert((await service.getQr(peer.id,'amneziavpn')).frames.length===frames.length);
 });
+test('table routes and DNS snapshots survive restart, agree in native and VPN exports, and support personal local bypass',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Table routes'});
+  const value={mode:'selected',services:['openai'],bypassLocal:true,
+    resolved:{openai:{ipv4:['9.9.9.9/32'],updatedAt:'2026-10-20T12:00:00Z',sources:['Google','Cloudflare']}},
+    custom:[{id:'custom-desk',name:'Custom network',enabled:true,ipv4:['8.8.4.4','192.168.1.0/24']}]};
+  await setGlobal(h.service,'routing',value);
+  const service=createAwgService(h.env,h.dependencies),saved=(await service.getClientPolicies()).routing;
+  assert.deepEqual(saved.resolved.openai.ipv4,['9.9.9.9/32']);assert.equal(saved.custom[0].name,'Custom network');
+  const conf=parseClientConfig((await service.getClientExport(peer.id)).config,names);
+  const vpn=parseClientConfig((await service.getClientExport(peer.id,'amneziavpn')).config,names);
+  assert.deepEqual(conf.server,vpn.server);assert(conf.server.AllowedIPs.includes('8.8.4.4/32'));
+  assert(conf.server.AllowedIPs.includes('9.9.9.9/32'));assert(!conf.server.AllowedIPs.includes('192.168.1.0/24'));
+  await setPersonal(service,peer.id,{routing:{mode:'override',value:{mode:'all',services:[],bypassLocal:true}}});
+  const fullNative=parseClientConfig((await service.getClientExport(peer.id)).config,names);
+  const fullVpn=parseClientConfig((await service.getClientExport(peer.id,'amneziavpn')).config,names);
+  assert.equal(fullNative.server.AllowedIPs,fullVpn.server.AllowedIPs);assert(!fullNative.server.AllowedIPs.includes('0.0.0.0/0'));
+  assert(fullNative.server.AllowedIPs.includes(':'));assert.equal(fullNative.server.Endpoint,conf.server.Endpoint);
+  const backup=await service.createBackup(),target=harness();
+  await target.service.restoreBackup(backup,null,{restoreObfuscation:false});
+  const restored=await target.service.getClientPolicies(peer.id);
+  assert.deepEqual(restored.routing.resolved,saved.resolved);assert.deepEqual(restored.routing.custom,saved.custom);
+  assert.equal(restored.client.routing.value.bypassLocal,true);
+});
+
 test('empty, unavailable and stale policy saves fail without mutations or revision changes',async()=>{
   const h=harness(),peer=await h.service.createPeer({label:'Test'});
   const before=await h.service.getClientPolicies();

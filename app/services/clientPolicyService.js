@@ -67,7 +67,7 @@ function effectiveProfile(text, state, id) {
   if (!mask && !routing) return profile;
   const parsed = parseClientConfig(profile.config, PARAMETER_NAMES, {nativeOnly: true});
   const packets = mask ? Object.fromEntries(PACKET_NAMES.map(name => [name, mask.packets[name] || ''])) : null;
-  const routes = routing ? routesFor(routing, parsed.client.DNS) : null;
+  const routes = routing ? routesFor(routing, parsed.client.DNS, parsed.server.Endpoint) : null;
   if (routing?.mode === 'selected') checkEndpoint(routes, parsed.server.Endpoint);
   let config = profile.config;
   if (packets) config = fields(config, 'Interface', packets);

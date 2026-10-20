@@ -14,7 +14,7 @@ function ui(fetch) {
   };
   for(const prefix of ['mask','clientMask'])node(prefix+'Packets').packets=[1,2,3,4,5].map(n=>({dataset:{packet:'I'+n},value:''}));
   const events={};
-  const context=vm.createContext({document:{getElementById:node},window:{addEventListener(type,handler){events[type]=handler;},dispatchEvent(event){events[event.type]?.(event);}},
+  const context=vm.createContext({document:{getElementById:node},window:{NaitRoutingTable:class {constructor(prefix){this.prefix=prefix;} fill(value){node(this.prefix+'Mode').value=value?.mode||'all';} cancelPending(){}},addEventListener(type,handler){events[type]=handler;},dispatchEvent(event){events[event.type]?.(event);}},
     CustomEvent:class {constructor(type,options={}){this.type=type;this.detail=options.detail;}},
     fetch,structuredClone,AbortSignal,showModal(){}});
   vm.runInContext(source,context);

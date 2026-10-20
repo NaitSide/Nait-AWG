@@ -25,12 +25,14 @@ test('production policy APIs enforce authentication, origin checks, validation a
     method,headers:{'content-type':'application/json',...headers},
     ...(body===undefined?{}:{body:JSON.stringify(body)})});
   for(const [route,method] of [['/api/client-policies','GET'],['/api/client-policies','POST'],
-    ['/api/client-policies/generate','POST'],['/api/peers/012345abcdef/policies','GET'],['/api/peers/012345abcdef/policies','PUT']]){
+    ['/api/client-policies/generate','POST'],['/api/client-policies/resolve','POST'],['/api/peers/012345abcdef/policies','GET'],['/api/peers/012345abcdef/policies','PUT']]){
     assert.equal((await call(route,method,method==='GET'?undefined:{})).status,401);
   }
   const login=await call('/api/login','POST',{username:'admin',password:process.env.NAIT_AWG_ADMIN_PASSWORD});
   assert.equal(login.status,200);
   const cookie=login.headers.get('set-cookie').split(';')[0],headers={cookie};
+  assert.equal((await call('/api/client-policies/resolve','POST',{services:['youtube']},{...headers,origin:'https://untrusted.invalid'})).status,403);
+  assert.equal((await call('/api/client-policies/resolve','POST',{services:['https://untrusted.invalid']},headers)).status,400);
   const state=await (await call('/api/client-policies','GET',undefined,headers)).json();
   assert.equal(state.revision,0);
   const generate=await call('/api/client-policies/generate','POST',{profile:'dns'},headers);

@@ -1239,7 +1239,7 @@ function createAwgService(env = process.env, dependencies = {}) {
       next.revision++;
       const impact = preflightPolicies(next);
       clientStore.savePolicies(next);
-      return {status:'ok',revision:next.revision,...impact};
+      return {status:'ok',revision:next.revision,value:fingerprint ? next.clients[fingerprint] : next[input.type],...impact};
     });
   }
 

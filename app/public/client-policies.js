@@ -4,6 +4,12 @@
   const t = text => window.NaitI18n?.t(text) || text;
   let globalState = null, clientState = null, clientId = '', clientLoading = 0;
   const prepared = {}, generations = {}, dirty = new Set(), busy = new Set();
+  const routeTables=Object.fromEntries(['route','clientRoute'].map(prefix=>[prefix,new window.NaitRoutingTable(prefix,{
+    request,onChange:()=>mark(prefix),onBusy:loading=>{
+      if(loading)busy.add(prefix);else busy.delete(prefix);
+      for(const form of ['mask','route','clientPolicy'])controls(form,el(form+'Fields').disabled);
+    }
+  })]));
   const help = {
     current:'Сохраняет исходные значения до явного выбора и сохранения.',
     none:'Отключает только I1–I5. Защита заголовков и остальные механизмы сохраняются.',
@@ -40,25 +46,17 @@
     busy.delete(prefix);
     prepared[prefix] = value ? structuredClone(value) : null;
     el(prefix+'Profile').value = value?.profile || 'current';
+    window.NaitDropdowns?.sync(el(prefix+'Profile'));
     el(prefix+'Packets').querySelectorAll('[data-packet]').forEach(input=>{
       input.value = value?.packets?.[input.dataset.packet] || '';
     });
     maskDisplay(prefix);
   }
   function fillRoute(prefix, value) {
-    el(prefix+'Mode').value = value?.mode || 'all';
-    el(prefix+'Services').querySelectorAll('input').forEach(input=>{
-      input.checked = (value?.services || []).includes(input.value);
-    });
-    routeDisplay(prefix);
-  }
-  function routeDisplay(prefix) {
-    el(prefix+'Services').hidden = el(prefix+'Mode').value !== 'selected';
+    routeTables[prefix].fill(value,(prefix==='route'?globalState:clientState)?.catalog);
   }
   function readRoute(prefix) {
-    const value = {mode:el(prefix+'Mode').value,services:Array.from(el(prefix+'Services').querySelectorAll('input:checked')).map(input=>input.value)};
-    if (value.mode === 'selected' && !value.services.length) throw new Error(t('Выберите хотя бы один доступный сервис.'));
-    return value;
+    return routeTables[prefix].read();
   }
   function readMask(prefix) {
     const profile = el(prefix+'Profile').value;
@@ -92,10 +90,6 @@
     });
     el(prefix+'Packets').addEventListener('input',()=>mark(prefix));
   }
-  for (const prefix of ['route','clientRoute']) {
-    el(prefix+'Mode').addEventListener('change',()=>{mark(prefix);routeDisplay(prefix);});
-    el(prefix+'Services').addEventListener('change',()=>mark(prefix));
-  }
   function fillGlobal(type) {
     const prefix = type === 'obfuscation' ? 'mask' : 'route';
     if (prefix === 'mask') {
@@ -119,7 +113,7 @@
         const value = type==='routing' ? readRoute(prefix) : readMask(prefix);
         busy.add(prefix);controls(prefix,true);
         const result = await request('/api/client-policies',{expectedRevision:globalState.revision,type,value});
-        globalState.revision = result.revision;globalState[type] = value;
+        globalState.revision = result.revision;globalState[type] = result.value || value;
         fillGlobal(type);status(prefix,'Настройки сохранены. Скачайте конфиги или QR заново.');
       } catch(error) {status(prefix,error.message);}
       finally {busy.delete(prefix);controls(prefix);}
@@ -128,7 +122,13 @@
   for (const prefix of ['clientMask','clientRoute']) el(prefix+'Binding').addEventListener('change',()=>{
     el(prefix+'Override').hidden = el(prefix+'Binding').value !== 'override'; mark(prefix);
   });
+  function discardClientDraft() {
+    generations.clientMask=(generations.clientMask||0)+1;busy.delete('clientMask');
+    dirty.delete('clientMask');dirty.delete('clientRoute');clientLoading++;
+    routeTables.clientRoute.cancelPending();
+  }
   async function openClient(id) {
+    discardClientDraft();
     const token = ++clientLoading;
     clientId=id;clientState=null;controls('clientPolicy',true);status('clientPolicy','Загружаем настройки…');
     showModal('clientPolicyModal');
@@ -140,6 +140,7 @@
         const choice = state.client[type];
         // An old profile has no policy until the first explicit save of a global setting.
         el(prefix+'Binding').value = choice?.mode || (state[type] ? 'inherit' : 'preserve');
+        window.NaitDropdowns?.sync(el(prefix+'Binding'));
         el(prefix+'Override').hidden = el(prefix+'Binding').value !== 'override';
         const value = choice?.value || state[type];
         if(type==='routing')fillRoute(prefix,value);else fillMask(prefix,value);
@@ -170,12 +171,12 @@
   });
   el('clientPolicyModal').querySelectorAll('[data-close-modal]').forEach(button=>button.addEventListener('click',()=>{
     if(busy.has('clientPolicy'))return;
-    dirty.delete('clientMask');dirty.delete('clientRoute');clientLoading++;
+    discardClientDraft();
   }));
   window.addEventListener('beforeunload',event=>{if(dirty.size){event.preventDefault();event.returnValue='';}});
   window.addEventListener('keydown',event=>{
     if(event.key==='Escape' && !el('clientPolicyModal').classList.contains('open')) {
-      dirty.delete('clientMask');dirty.delete('clientRoute');clientLoading++;
+      discardClientDraft();
     }
   });
   window.addEventListener('nait:obfuscationchange',async()=>{
