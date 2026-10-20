@@ -17,7 +17,7 @@
       response = await fetch(url, body === undefined ? {cache:'no-store',signal:AbortSignal.timeout(30000)} : {
         method, headers:{'content-type':'application/json'}, body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
     } catch {
-      throw new Error(t('Не удалось связаться с панелью. Загрузите настройки заново.'));
+      throw new Error(t('Не удалось связаться с панелью. Обновите страницу и повторите попытку.'));
     }
     const data = await response.json().catch(()=>({}));
     if (!response.ok) throw new Error(data.message || t('Не удалось загрузить или сохранить настройки.'));
@@ -26,8 +26,9 @@
   const status = (prefix, message) => { el(prefix+'Status').textContent = message; };
   function controls(prefix, loading=false) {
     el(prefix+'Fields').disabled = loading;
-    el(prefix+'Save').disabled = loading;
-    const cancel = el(prefix+'Cancel'); if (cancel) cancel.disabled = loading;
+    const changed = prefix === 'clientPolicy' ? dirty.has('clientMask') || dirty.has('clientRoute') : dirty.has(prefix);
+    el(prefix+'Save').disabled = loading || !changed || busy.size > 0;
+    const cancel = el(prefix+'Cancel'); if (cancel) cancel.disabled = loading || !changed;
   }
   function maskDisplay(prefix) {
     const profile = el(prefix+'Profile').value;
@@ -69,6 +70,7 @@
   }
   function mark(prefix) {
     dirty.add(prefix);
+    controls(prefix.startsWith('client') ? 'clientPolicy' : prefix);
     status(prefix.startsWith('client') ? 'clientPolicy' : prefix, 'Есть несохранённые изменения.');
   }
   for (const prefix of ['mask','clientMask']) {
@@ -78,6 +80,7 @@
       mark(prefix); maskDisplay(prefix);
       if (['current','custom'].includes(profile)) return;
       busy.add(prefix);
+      controls(prefix==='mask'?'mask':'clientPolicy');
       status(prefix==='mask'?'mask':'clientPolicy','Готовим параметры…');
       try {
         const value = await request('/api/client-policies/generate',{profile});
@@ -85,7 +88,7 @@
         prepared[prefix] = value;
         status(prefix==='mask'?'mask':'clientPolicy','Параметры подготовлены. Сохраните, чтобы применить их к выдаваемым конфигам.');
       } catch(error) { if (generations[prefix]===token) status(prefix==='mask'?'mask':'clientPolicy',error.message); }
-      finally { if (generations[prefix]===token) busy.delete(prefix); }
+      finally { if (generations[prefix]===token) {busy.delete(prefix);controls(prefix==='mask'?'mask':'clientPolicy');} }
     });
     el(prefix+'Packets').addEventListener('input',()=>mark(prefix));
   }
@@ -95,7 +98,10 @@
   }
   function fillGlobal(type) {
     const prefix = type === 'obfuscation' ? 'mask' : 'route';
-    if (prefix === 'mask') fillMask(prefix,globalState.obfuscation); else fillRoute(prefix,globalState.routing);
+    if (prefix === 'mask') {
+      fillMask(prefix,globalState.obfuscation);
+      window.dispatchEvent(new CustomEvent('nait:maskpolicy',{detail:globalState.obfuscation}));
+    } else fillRoute(prefix,globalState.routing);
     dirty.delete(prefix); status(prefix,''); controls(prefix);
   }
   async function loadGlobals() {
@@ -107,13 +113,6 @@
   }
   for (const [prefix,form,type] of [['mask','maskForm','obfuscation'],['route','routeForm','routing']]) {
     el(prefix+'Cancel').addEventListener('click',()=>{if(globalState)fillGlobal(type);});
-    el(prefix+'Reload').addEventListener('click',async()=>{
-      if (busy.size) return;
-      // Explicit reload discards only this form's draft; the other draft stays visible.
-      controls(prefix,true);
-      try {const next=await request('/api/client-policies');globalState=next;fillGlobal(type);}
-      catch(error){status(prefix,error.message);controls(prefix,!globalState);}
-    });
     el(form).addEventListener('submit',async event=>{
       event.preventDefault(); if (!globalState || busy.size) return;
       try {
@@ -121,7 +120,7 @@
         busy.add(prefix);controls(prefix,true);
         const result = await request('/api/client-policies',{expectedRevision:globalState.revision,type,value});
         globalState.revision = result.revision;globalState[type] = value;
-        dirty.delete(prefix);status(prefix,'Настройки сохранены. Скачайте конфиги или QR заново.');
+        fillGlobal(type);status(prefix,'Настройки сохранены. Скачайте конфиги или QR заново.');
       } catch(error) {status(prefix,error.message);}
       finally {busy.delete(prefix);controls(prefix);}
     });
@@ -178,6 +177,12 @@
     if(event.key==='Escape' && !el('clientPolicyModal').classList.contains('open')) {
       dirty.delete('clientMask');dirty.delete('clientRoute');clientLoading++;
     }
+  });
+  window.addEventListener('nait:obfuscationchange',async()=>{
+    try {
+      globalState = await request('/api/client-policies');
+      if (!dirty.has('mask')) fillGlobal('obfuscation');
+    } catch(error) {status('mask',error.message);}
   });
   loadGlobals();
 })();

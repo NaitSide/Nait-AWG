@@ -134,7 +134,7 @@ test('personal packets and routes survive general masking, shared obfuscation an
   await setGlobal(h.service,'routing',{mode:'all',services:[]});
   await setGlobal(h.service,'obfuscation',generateSignature('none'));
   const state=await h.service.getObfuscation();
-  await h.service.setObfuscation({parameters:{...parameters,S1:'24',S2:'24',S3:'24',S4:'24'},confirmed:true,expectedRevision:state.revision});
+  await h.service.setObfuscation({parameters:{...state.parameters,S1:'24',S2:'24',S3:'24',S4:'24'},confirmed:true,expectedRevision:state.revision});
   let parsed=parseClientConfig((await h.service.getClientExport(peer.id,'amneziavpn')).config,names);
   assert.equal(parsed.client.I1,personal.packets.I1);assert.equal(parsed.client.S1,'24');
   assert(!parsed.server.AllowedIPs.includes('0.0.0.0/0'));
@@ -365,7 +365,7 @@ test('obfuscation apply and journal reconciliation work with encrypted structure
   const h=harness();const created=await h.service.createPeer({label:'TV'});
   const before=unpack((await h.service.getClientExport(created.id,'amneziavpn')).config);
   const state=await h.service.getObfuscation();
-  await h.service.setObfuscation({parameters:{...parameters,S1:'24',S2:'24',S3:'24',S4:'24'},confirmed:true,expectedRevision:state.revision});
+  await h.service.setObfuscation({parameters:{...state.parameters,S1:'24',S2:'24',S3:'24',S4:'24'},confirmed:true,expectedRevision:state.revision});
   const guest=unpack((await h.service.getClientExport(created.id,'amneziavpn')).config);
   const parsed=parseClientConfig(encodeAmneziaGuest(guest),names);
   assert.equal(parsed.client.S1,'24');
@@ -426,4 +426,36 @@ test('migration rolls back when source routes cannot use the destination DNS',as
   assert.equal((await target.service.listPeers()).length,0);
   assert.equal((await target.service.getClientPolicies()).routing,null);
   assert.equal(target.mutations.length,2);
+});
+
+
+test('advanced editor shows saved general packets and keeps preset identity during shared edits',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Editor test'});
+  for (const profile of ['dns','quic','none']) {
+    const mask=generateSignature(profile);
+    await setGlobal(h.service,'obfuscation',mask);
+    const state=await h.service.getObfuscation();
+    for (const name of ['I1','I2','I3','I4','I5']) assert.equal(state.parameters[name],mask.packets[name] || '');
+    const parsed=parseClientConfig((await h.service.getClientExport(peer.id)).config,names);
+    assert.equal(parsed.client.I1 || '',state.parameters.I1);
+    const unchanged=await h.service.inspectObfuscation({parameters:state.parameters,expectedRevision:state.revision});
+    assert.deepEqual(unchanged.changed,[]);
+    await h.service.setObfuscation({parameters:{...state.parameters,Jc:state.parameters.Jc==='4'?'5':'4'},expectedRevision:state.revision,confirmed:true});
+    assert.equal((await h.service.getClientPolicies()).obfuscation.profile,profile);
+  }
+});
+
+test('advanced editor rejects a stale general profile and manual packets become the general custom profile',async()=>{
+  const h=harness();await h.service.createPeer({label:'Stale editor test'});
+  await setGlobal(h.service,'obfuscation',generateSignature('dns'));
+  const stale=await h.service.getObfuscation();
+  await setGlobal(h.service,'obfuscation',generateSignature('quic'));
+  for (const method of ['inspectObfuscation','setObfuscation']) {
+    await assert.rejects(h.service[method]({parameters:stale.parameters,expectedRevision:stale.revision,confirmed:true}),{code:'obfuscation_changed'});
+  }
+  const state=await h.service.getObfuscation();
+  const next={...state.parameters,I1:'<r 40>',I2:'<r 20>'};
+  await h.service.setObfuscation({parameters:next,expectedRevision:state.revision,confirmed:true});
+  const saved=(await h.service.getClientPolicies()).obfuscation;
+  assert.equal(saved.profile,'custom');assert.deepEqual(saved.packets,{I1:'<r 40>',I2:'<r 20>'});
 });

@@ -13,7 +13,9 @@ function ui(fetch) {
     return nodes.get(id);
   };
   for(const prefix of ['mask','clientMask'])node(prefix+'Packets').packets=[1,2,3,4,5].map(n=>({dataset:{packet:'I'+n},value:''}));
-  const context=vm.createContext({document:{getElementById:node},window:{addEventListener(){}},
+  const events={};
+  const context=vm.createContext({document:{getElementById:node},window:{addEventListener(type,handler){events[type]=handler;},dispatchEvent(event){events[event.type]?.(event);}},
+    CustomEvent:class {constructor(type,options={}){this.type=type;this.detail=options.detail;}},
     fetch,structuredClone,AbortSignal,showModal(){}});
   vm.runInContext(source,context);
   return node;
@@ -37,12 +39,25 @@ test('cancel invalidates an in-flight signature preview and preserves custom pac
   assert.equal(node('maskPackets').packets[0].value,'<r 50>');
   assert.equal(node('maskStatus').textContent,'');assert.equal(mutations,1);
 });
-test('load failure leaves forms disabled and permits a successful explicit retry',async()=>{
+test('load failure leaves forms disabled; refreshing the page loads saved settings',async()=>{
   let fail=true;
   const node=ui(async()=>{if(fail)throw Error('Synthetic disconnected server');return response({revision:0,obfuscation:null,routing:null});});
   await tick();
   assert.equal(node('routeFields').disabled,true);
   assert.match(node('routeStatus').textContent,/Не удалось связаться/);
-  fail=false;await node('routeReload').listeners.click();
-  assert.equal(node('routeFields').disabled,false);assert.equal(node('routeStatus').textContent,'');
+  assert.match(node('routeStatus').textContent,/Обновите страницу/);
+  fail=false;const refreshed=ui(async()=>response({revision:1,obfuscation:{profile:'quic',packets:{I1:'<r 20>'}},routing:null}));
+  await tick();
+  assert.equal(refreshed('routeFields').disabled,false);assert.equal(refreshed('routeStatus').textContent,'');
+  assert.equal(refreshed('maskProfile').value,'quic');
+});
+
+
+test('cancel restores the last saved profile without a server request',async()=>{
+  let reads=0;
+  const node=ui(async()=>{reads++;return response({revision:1,obfuscation:{profile:'quic',packets:{I1:'<r 20>'}},routing:null});});
+  await tick();
+  node('maskProfile').value='custom';await node('maskProfile').listeners.change();
+  node('maskCancel').listeners.click();
+  assert.equal(node('maskProfile').value,'quic');assert.equal(reads,1);
 });

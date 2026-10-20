@@ -2,6 +2,15 @@
 // Russian source messages are stable gettext-style keys. Do not translate user data.
 (() => {
   const en = {
+    "Как работает маскировка": "How obfuscation works",
+    "Поля I1–I5 задают дополнительные пакеты, отправляемые перед установкой VPN-соединения. Они позволяют имитировать признаки другого сетевого трафика.": "Fields I1–I5 define additional packets sent before setting up a VPN connection. They can imitate characteristics of other network traffic.",
+    "— система доменных имён. Этот профиль добавляет пакет, похожий на DNS-запрос.": "— the domain name system. This profile adds a packet resembling a DNS query.",
+    "— протокол, используемый в том числе для HTTP/3. Этот профиль имитирует его начальный пакет.": "— a protocol used for HTTP/3, among other things. This profile imitates its initial packet.",
+    "При сохранении профиля DNS или QUIC значение I1 заменяется, а I2–I5 очищаются. Применённые значения можно увидеть ниже, в расширенных параметрах.": "Saving the DNS or QUIC profile replaces I1 and clears I2–I5. You can view the applied values below in the advanced settings.",
+    "После изменения настроек скачайте и импортируйте конфиг или QR-код заново.": "After changing settings, download and import the config or QR code again.",
+    "Не удалось связаться с панелью. Обновите страницу и повторите попытку.": "Could not reach the panel. Refresh the page and try again.",
+    "Общие настройки маскировки изменились. Выключите и заново включите Edit mode.": "General obfuscation settings have changed. Turn Edit mode off and on again.",
+    "Здесь показаны общие значения I1–I5 для выдаваемых конфигов. Их ручное изменение создаст пользовательский профиль.": "These are the general I1–I5 values used in exported configs. Editing them manually creates a custom profile.",
     'Для выборочного режима нужен числовой IPv4-адрес VPN-сервера.':'Selective mode requires a numeric IPv4 VPN server endpoint.',
     'Адрес VPN-сервера входит в выбранные маршруты. Выберите другие сервисы или полный режим.':'The VPN endpoint is included in the selected routes. Choose other services or full-tunnel mode.',
     "Настройки изменились. Загрузите их заново перед сохранением.": "Settings have changed. Reload them before saving.",
@@ -38,7 +47,6 @@
     "Сохранить исходные параметры":"Preserve original settings",
     "Персональные настройки":"Personal settings",
     "Настройки импортированного профиля":"Imported profile settings",
-    "Загрузить заново":"Reload",
     "Загружаем настройки…":"Loading settings…",
     "Сохраняет исходные значения до явного выбора и сохранения.":"Preserves original values until you explicitly choose and save new settings.",
     "Отключает только I1–I5. Защита заголовков и остальные механизмы сохраняются.":"Disables I1–I5 only. Header protection and other mechanisms remain enabled.",

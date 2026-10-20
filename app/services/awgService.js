@@ -607,7 +607,23 @@ function createAwgService(env = process.env, dependencies = {}) {
   let restoreInProgress = false;
   let usageSampleInFlight = null;
   let usageTimer = null;
+  // The editor presents the same general client packets used by exports.
+  function generalObfuscationParameters(parameters) {
+    const mask=clientStore.policies().obfuscation;
+    return mask ? {...parameters,...Object.fromEntries(['I1','I2','I3','I4','I5'].map(name=>[name,mask.packets[name] || '']))} : parameters;
+  }
+  function editorRevision(revision) {
+    return crypto.createHash('sha256').update(JSON.stringify([revision,clientStore.policies().obfuscation])).digest('hex');
+  }
+  async function editorInput(input) {
+    const current=await obfuscation.current();
+    if (input?.expectedRevision && input.expectedRevision!==editorRevision(current.revision)) {
+      throw createHttpError(409,'obfuscation_changed','Параметры изменились. Выключите и заново включите Edit mode.');
+    }
+    return {...input,expectedRevision:input?.expectedRevision ? current.revision : input?.expectedRevision};
+  }
   const obfuscation = createObfuscationService({receiver,directory:path.dirname(dataPath),
+    presentParameters:generalObfuscationParameters,
     clients:()=>Array.from(clientStore.activeByFingerprint().values()).filter(client=>client.encryptedConfig),
     encrypt:text=>encrypt(text,dataKey),decrypt:text=>decrypt(text,dataKey),
     rewriteConfig:(text,parameters)=>{
@@ -1229,15 +1245,18 @@ function createAwgService(env = process.env, dependencies = {}) {
 
   return { getClientPolicies, setClientPolicies, generateSignature:profile=>policyRules.generateSignature(profile), listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
     readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
-    getObfuscation:()=>withGateLock(()=>obfuscation.current()),
+    getObfuscation:()=>withGateLock(async()=>{
+      const state=await obfuscation.current();
+      return {...state,parameters:generalObfuscationParameters(state.parameters),revision:editorRevision(state.revision)};
+    }),
     generateObfuscation:input=>obfuscationRules.generate(input?.parameters),
     inspectObfuscation:input=>withGateLock(async()=>{
-      const preview=await obfuscation.inspect(input);
-      return {parameters:preview.parameters,revision:preview.state.revision,changed:preview.changed,
+      const preview=await obfuscation.inspect(await editorInput(input));
+      return {parameters:preview.parameters,revision:editorRevision(preview.state.revision),changed:preview.changed,
         sharedChanged:preview.sharedChanged,savedConfigs:preview.savedConfigs,
         missingConfigs:Math.max(0,(preview.state.peersCount||0)-preview.savedConfigs)};
     }),
-    setObfuscation:input=>withGateLock(()=>obfuscation.apply(input)),
+    setObfuscation:input=>withGateLock(async()=>obfuscation.apply(await editorInput(input))),
     getUsage, sampleUsage, startUsageTracking, receiver };
 }
 

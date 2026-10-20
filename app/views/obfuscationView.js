@@ -4,7 +4,7 @@ const { infoIcon } = require('./infoIcon');
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function renderObfuscation(profile) {
   const available=profile.status==='ok'&&profile.protocolVersion==='3.1';
-  const fields=groups.map(group=>`<section class="obfuscation-group"><h3>${esc(group.title)}</h3>${group.id==='cps'?'<p class="policy-note" style="padding:0 19px">Профиль выше имеет приоритет при выдаче конфигов. Сохранение изменённых I1–I5 создаст пользовательский профиль.</p>':''}<div class="parameter-grid">${group.names.map(name=>{
+  const fields=groups.map(group=>`<section class="obfuscation-group"><h3>${esc(group.title)}</h3>${group.id==='cps'?'<p class="policy-note" style="padding:0 19px">Здесь показаны общие значения I1–I5 для выдаваемых конфигов. Их ручное изменение создаст пользовательский профиль.</p>':''}<div class="parameter-grid">${group.names.map(name=>{
     const [description,help]=hints[name];
     const value=profile.clientInterfaceParameters?.[name]??'';
     return `<div class="param obfuscation-param"><div class="obfuscation-label"><label for="obf-${name}">${esc(name)}</label><button class="obfuscation-info" type="button" aria-label="О параметре ${esc(name)}" aria-expanded="false" aria-controls="obf-help-${name}" data-obfuscation-help>${infoIcon}</button></div><input id="obf-${name}" name="${name}" value="${esc(value)}" maxlength="${/^I/.test(name)?4096:128}" autocomplete="off" spellcheck="false" disabled><div class="obfuscation-popover" id="obf-help-${name}" role="note" hidden><strong>${esc(name)}</strong><p>${esc(description)}</p><p>${esc(help)}</p></div></div>`;

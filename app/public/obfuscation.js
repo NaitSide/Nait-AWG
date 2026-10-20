@@ -31,6 +31,21 @@
     toggle.setAttribute('aria-pressed',String(editing));
     document.getElementById('obfuscationMode').textContent=editing?'Edit mode':'Read-only';
   }
+  let maskPolicySignature;
+  window.addEventListener('nait:maskpolicy',event=>{
+    const signature=JSON.stringify(event.detail);
+    if (!event.detail || signature===maskPolicySignature) return;
+    maskPolicySignature=signature;
+    if (editing || busy) {
+      for (const input of inputs.filter(input=>/^I[1-5]$/.test(input.name))) input.defaultValue=event.detail.packets[input.name] || '';
+      status.textContent='Общие настройки маскировки изменились. Выключите и заново включите Edit mode.';
+      return;
+    }
+    for (const input of inputs.filter(input=>/^I[1-5]$/.test(input.name))) {
+      input.value=event.detail.packets[input.name] || '';
+      input.defaultValue=input.value;
+    }
+  });
   toggle.addEventListener('click',async()=>{
     if(busy)return;
     if(editing){editing=false;inputs.forEach(input=>{input.value=input.defaultValue;});status.textContent='';controls();return;}
@@ -71,6 +86,7 @@
       fill(preview.parameters);inputs.forEach(input=>{input.defaultValue=input.value;});editing=false;
       status.textContent=`Параметры сохранены. Обновлено конфигов в панели: ${result.updatedConfigs}. `+(preview.sharedChanged?'Скачайте и раздайте их заново.':'Общие параметры подключения не изменены.');
       busy=false;controls();closeModal(modal);
+      window.dispatchEvent(new CustomEvent('nait:obfuscationchange'));
     }catch(error){errorBox.textContent=error.message;errorBox.hidden=false;}
     finally{busy=false;apply.textContent='Применить';controls();}
   });

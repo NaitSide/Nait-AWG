@@ -5,7 +5,8 @@ const crypto=require('node:crypto');
 const rules=require('./obfuscationRules');
 function failure(code,message,status=409){return Object.assign(new Error(message),{status,code});}
 function createObfuscationService({receiver,directory,clients,encrypt,decrypt,updateConfigs,
-  rewriteConfig=(text,parameters)=>rules.rewrite(text,parameters,true),preparePolicyUpdate=()=>undefined}){
+  rewriteConfig=(text,parameters)=>rules.rewrite(text,parameters,true),preparePolicyUpdate=()=>undefined,
+  presentParameters=parameters=>parameters}){
   const journalPath=path.join(directory,'obfuscation-pending.json');
   function saveJournal(journal){
     const temporary=journalPath+'.'+crypto.randomUUID()+'.tmp';
@@ -32,7 +33,8 @@ function createObfuscationService({receiver,directory,clients,encrypt,decrypt,up
     const parameters=rules.validate(input?.parameters);
     const state=await current();
     if(input.expectedRevision&&input.expectedRevision!==state.revision)throw failure('obfuscation_changed','Параметры изменились. Выключите и заново включите Edit mode.');
-    const changed=rules.names.filter(name=>String(parameters[name]??'')!==String(state.parameters[name]??''));
+    const currentParameters=presentParameters(state.parameters);
+    const changed=rules.names.filter(name=>String(parameters[name]??'')!==String(currentParameters[name]??(name==='ContentPaddingAddition'?'0':'')));
     const stored=clients();
     return {state,parameters,changed,sharedChanged:changed.some(name=>rules.shared.has(name)),savedConfigs:stored.length};
   }
