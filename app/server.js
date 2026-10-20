@@ -339,6 +339,11 @@ function requireSameOrigin(req,res,next){
   if(!valid)return res.status(403).json({code:'invalid_origin',message:'Недопустимый источник запроса.'});
   next();
 }
+app.get('/api/client-policies',requireAuth,async(_req,res)=>{try{res.set('Cache-Control','no-store').json(await panelService.getClientPolicies());}catch(error){sendError(res,error);}});
+app.post('/api/client-policies',requireAuth,async(req,res)=>{try{res.json(await panelService.setClientPolicies(req.body));}catch(error){sendError(res,error);}});
+app.post('/api/client-policies/generate',requireAuth,(req,res)=>{try{res.json(panelService.generateSignature(req.body?.profile));}catch(error){sendError(res,error);}});
+app.get('/api/peers/:fingerprint/policies',requireAuth,async(req,res)=>{try{res.set('Cache-Control','no-store').json(await panelService.getClientPolicies(req.params.fingerprint));}catch(error){sendError(res,error);}});
+app.put('/api/peers/:fingerprint/policies',requireAuth,async(req,res)=>{try{res.json(await panelService.setClientPolicies(req.body,req.params.fingerprint));}catch(error){sendError(res,error);}});
 app.get('/api/obfuscation',requireAuth,async(_req,res)=>{try{res.json(await panelService.getObfuscation());}catch(error){sendError(res,error);}});
 for(const [route,method] of [['generate','generateObfuscation'],['inspect','inspectObfuscation'],['apply','setObfuscation']]){
   app.post('/api/obfuscation/'+route,requireAuth,async(req,res)=>{

@@ -62,7 +62,8 @@ function validate(values) {
       if(tags.join('')!==text.replace(/\s+(?=<)/g,'').trim()) throw invalid(name+': некорректная последовательность тегов.');
       let size=0;
       for(const tag of tags) size+=tag==='<t>'?4:tag.startsWith('<b ')?(tag.length-6)/2:Number(tag.match(/\d+/)[0]);
-      if(size<1||size>1280) throw invalid(name+': суммарный размер пакета должен быть 1–1280 байт.');
+      if(tags.filter(tag=>tag==='<t>').length>1 || tags.some(tag=>/^<(r|rc|rd) /.test(tag)&&(Number(tag.match(/\d+/)[0])<1||Number(tag.match(/\d+/)[0])>1000))) throw invalid(name+': некорректная длина тега или повторный timestamp.');
+      if(size<1||size>1232) throw invalid(name+': суммарный размер пакета должен быть 1–1232 байта.');
       result[name]=tags.join('');
     } else if(/^(Jc|Jmin|Jmax|S[1-4])$/.test(name)) {
       const max=name==='Jc'?128:name==='S1'?1132:name==='S2'?1188:1280;

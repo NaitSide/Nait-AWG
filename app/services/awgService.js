@@ -16,6 +16,8 @@ const { PARAMETER_NAMES, clientSettings, saveProfile, readProfile, rewriteProfil
 const { buildAmneziaQrSeries } = require('./clientQrService');
 const { createObfuscationService } = require('./obfuscationService');
 const obfuscationRules = require('./obfuscationRules');
+const policyRules = require('./clientPolicyService');
+const routingRules = require('./routingService');
 
 const execFileAsync = promisify(execFile);
 
@@ -233,18 +235,28 @@ function createClientStore(filePath) {
       created_at TEXT NOT NULL
     ) STRICT;
     CREATE INDEX IF NOT EXISTS peer_gate_address ON peer_gate_addresses(address);
+    CREATE TABLE IF NOT EXISTS client_policies (id INTEGER PRIMARY KEY CHECK(id = 1), state TEXT NOT NULL) STRICT;
   `);
 
   return {
     snapshot() { return Buffer.from(db.serialize()); },
-    updateConfigs(updates) {
+    policies() {
+      const row = db.prepare('SELECT state FROM client_policies WHERE id = 1').get();
+      return row ? policyRules.validateState(JSON.parse(row.state)) : policyRules.emptyState();
+    },
+    savePolicies(state) {
+      db.prepare('INSERT INTO client_policies (id, state) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state')
+        .run(JSON.stringify(policyRules.validateState(state)));
+    },
+    updateConfigs(updates, policyState) {
       const statement=db.prepare("UPDATE clients SET encrypted_config = ? WHERE public_key_fingerprint = ? AND status = 'active'");
       db.exec('BEGIN IMMEDIATE');
-      try {for(const item of updates)statement.run(item.encryptedConfig,item.fingerprint);db.exec('COMMIT');}
+      try {for(const item of updates)statement.run(item.encryptedConfig,item.fingerprint);if(policyState)this.savePolicies(policyState);db.exec('COMMIT');}
       catch(error){db.exec('ROLLBACK');throw error;}
     },
     snapshotState() {
       return {
+        policies: this.policies(),
         clients: db.prepare(`SELECT client_id AS clientId, label, receiver_label AS receiverLabel,
           public_key_fingerprint AS publicKeyFingerprint, address, encrypted_config AS encryptedConfig,
           status, created_at AS createdAt, deleted_at AS deletedAt FROM clients ORDER BY created_at ASC`).all(),
@@ -269,11 +281,16 @@ function createClientStore(filePath) {
         status, created_at AS createdAt FROM clients WHERE public_key_fingerprint = ? AND status = 'active'`)
         .get(fingerprint);
     },
-    insert(client) {
-      db.prepare(`INSERT INTO clients (client_id, label, receiver_label, public_key_fingerprint, address,
+    insert(client, policies) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`INSERT INTO clients (client_id, label, receiver_label, public_key_fingerprint, address,
         encrypted_config, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`)
         .run(client.clientId, client.label, client.receiverLabel, client.publicKeyFingerprint,
           client.address, client.encryptedConfig, client.createdAt);
+        if (policies) this.savePolicies(policies);
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
     },
     markDeleted(fingerprint) {
       db.prepare(`UPDATE clients SET status = 'deleted', encrypted_config = NULL, deleted_at = ?
@@ -311,6 +328,7 @@ function createClientStore(filePath) {
           client.publicKeyFingerprint, client.address, client.encryptedConfig, client.status, client.createdAt, client.deletedAt);
         for (const gate of state.gates) insertGate.run(gate.publicKeyFingerprint, gate.publicKey, gate.deviceId,
           gate.address, gate.createdAt);
+        this.savePolicies(state.policies || policyRules.emptyState());
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');
@@ -433,7 +451,10 @@ function prepareRestoreDatabase(encoded) {
         throw createHttpError(400, 'invalid_backup_database', 'Адреса клиентов в резервной копии повреждены.');
       }
     }
-    return { clients, gates };
+    const policyTable = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'client_policies'").get();
+    const policyRow = policyTable ? database.prepare('SELECT state FROM client_policies WHERE id = 1').get() : null;
+    const policies = policyRow ? policyRules.validateState(JSON.parse(policyRow.state)) : policyRules.emptyState();
+    return { clients, gates, policies };
   } finally {
     database?.close();
     fs.rmSync(directory, { recursive: true, force: true });
@@ -589,12 +610,30 @@ function createAwgService(env = process.env, dependencies = {}) {
   const obfuscation = createObfuscationService({receiver,directory:path.dirname(dataPath),
     clients:()=>Array.from(clientStore.activeByFingerprint().values()).filter(client=>client.encryptedConfig),
     encrypt:text=>encrypt(text,dataKey),decrypt:text=>decrypt(text,dataKey),
-    rewriteConfig:rewriteProfile,
-    updateConfigs:updates=>clientStore.updateConfigs(updates)});
+    rewriteConfig:(text,parameters)=>{
+      // Shared edits preserve client-only packets; policies overlay them at export.
+      const original = readProfile(text);
+      const current = parseClientConfig(original.config, CLIENT_PARAMETER_ORDER, {nativeOnly:true}).client;
+      const preserved = {...parameters};
+      for (const name of ['I1','I2','I3','I4','I5']) preserved[name] = current[name];
+      return rewriteProfile(text,preserved);
+    },
+    preparePolicyUpdate:(parameters,changed)=>{
+      if (!changed.some(name=>/^I[1-5]$/.test(name))) return undefined;
+      const state = clientStore.policies();
+      state.obfuscation = policyRules.masking({profile:'custom',packets:Object.fromEntries(
+        ['I1','I2','I3','I4','I5'].filter(name=>parameters[name]).map(name=>[name,parameters[name]]))});
+      state.revision++;
+      preflightPolicies(state);
+      return state;
+    },
+    updateConfigs:(updates,state)=>clientStore.updateConfigs(updates,state)});
   function encryptedProfile(config, label, profile, settings) {
+    const clientParameters = parseClientConfig(config,CLIENT_PARAMETER_ORDER,{nativeOnly:true}).client;
     const guest = createAmneziaGuest(config, label, CLIENT_PARAMETER_ORDER, {
       mtu: settings.mtu, subnetAddress: profile.tunnelSubnet.split('/')[0],
-      serverParameters: profile.clientInterfaceParameters,
+      serverParameters: {...profile.clientInterfaceParameters, ...Object.fromEntries(
+        ['I1','I2','I3','I4','I5'].map(name=>[name,clientParameters[name] || '']))},
       container: containerName === 'amnezia-awg' ? 'amnezia-awg' : 'amnezia-awg2'
     });
     return encrypt(saveProfile(config, guest), dataKey);
@@ -945,14 +984,18 @@ function createAwgService(env = process.env, dependencies = {}) {
             throw createHttpError(409, 'restore_profile_mismatch', 'После переноса профиль AWG изменился неожиданным образом. Выполняется откат.');
           }
           const clientProfile = { ...profile, listenPort: target.publishedPort };
-          const state = { clients: [], gates: [] };
+          const state = { clients: [], gates: [], policies: policyRules.migratePolicies(
+            prepared.database.policies, previous.database.policies, staged, restoreObfuscation) };
           const metadata = { version: 1, notes: {}, telegrams: {} };
           for (const peer of staged) {
             const settings = clientSettings(env, clientProfile.clientInterfaceParameters || {});
             const clientConfig = buildConfig({ privateKey: peer.privateKey, address: peer.address, profile: clientProfile,
               presharedKey: peer.presharedKey, endpointHost, ...settings });
+            const encryptedConfig = encryptedProfile(clientConfig, peer.label, clientProfile, settings);
+            const effective = policyRules.effectiveProfile(decrypt(encryptedConfig,dataKey),state.policies,peer.fingerprint);
+            encodeAmneziaGuest(effective.guest);
             state.clients.push({ clientId: peer.clientId, label: peer.label, receiverLabel: peer.receiverLabel,
-              publicKeyFingerprint: peer.fingerprint, address: peer.address, encryptedConfig: encryptedProfile(clientConfig, peer.label, clientProfile, settings),
+              publicKeyFingerprint: peer.fingerprint, address: peer.address, encryptedConfig,
               status: 'active', createdAt: peer.createdAt, deletedAt: null });
             state.gates.push({ publicKeyFingerprint: peer.fingerprint, publicKey: peer.publicKey,
               deviceId: peer.clientId, address: peer.address, createdAt: peer.createdAt });
@@ -1001,15 +1044,22 @@ function createAwgService(env = process.env, dependencies = {}) {
     const clientId = `awg-${crypto.randomUUID()}`;
     const config = buildConfig({ privateKey: material.privateKey, address, profile, presharedKey: material.presharedKey, endpointHost, ...settings });
     const encryptedConfig = encryptedProfile(config, label, profile, settings);
+    const fingerprint = createFingerprint(material.publicKey);
+    const policyState = clientStore.policies();
+    policyState.clients[fingerprint] = {routing:{mode:'inherit'},obfuscation:{mode:'inherit'}};
+    policyState.revision++;
+    // Fail before changing the server if a saved client policy cannot be exported.
+    const effective = policyRules.effectiveProfile(decrypt(encryptedConfig, dataKey), policyState, fingerprint);
+    const encoded = encodeAmneziaGuest(effective.guest);
+    if (Buffer.byteLength(encoded) > 64 * 1024) throw policyRules.failure('client_policy_too_large');
     const idempotencyKey = crypto.randomUUID();
     await receiver('/awg/peers', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey, 'x-request-id': crypto.randomUUID() },
       body: JSON.stringify({ clientId, clientLabel: receiverLabel, publicKey: material.publicKey, presharedKey: material.presharedKey, allowedIp: address, persistentKeepalive: 0 })
     });
-    const fingerprint = createFingerprint(material.publicKey);
     clientStore.insert({ clientId, label, receiverLabel, publicKeyFingerprint: fingerprint, address,
-      encryptedConfig, createdAt: new Date().toISOString() });
+      encryptedConfig, createdAt: new Date().toISOString() }, policyState);
     return { id: fingerprint, publicKeyFingerprint: fingerprint, label, address, state: 'inactive', status: 'active', hasConfig: true, canDelete: true };
   }
 
@@ -1017,7 +1067,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     return withGateLock(async()=>{
       const client = clientStore.findActive(fingerprint);
       if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Nait-AWG or has been removed');
-      return { client, ...readProfile(decrypt(client.encryptedConfig, dataKey)) };
+      return { client, ...policyRules.effectiveProfile(decrypt(client.encryptedConfig, dataKey), clientStore.policies(), fingerprint) };
     });
   }
 
@@ -1068,12 +1118,19 @@ function createAwgService(env = process.env, dependencies = {}) {
       const label = matches[0].clientName || `Клиент ${context.address}`;
       let receiverLabel;
       try { receiverLabel = safeClientLabel(label); } catch { receiverLabel = `Client-${fingerprint}`; }
+      if (input?.policyMode !== undefined && !['preserve','inherit'].includes(input.policyMode)) throw policyRules.failure();
+      // Imports preserve their source until the administrator explicitly chooses inheritance.
+      const policyState = clientStore.policies();
+      policyState.clients[fingerprint] = {routing:{mode:input?.policyMode || 'preserve'},obfuscation:{mode:input?.policyMode || 'preserve'}};
+      policyState.revision++;
       // Keep the existing gate device identity when attaching configuration.
+      const importedCipher = parsed.guest ? encrypt(saveProfile(parsed.config, parsed.guest), dataKey)
+        : encryptedProfile(parsed.config, label, profile, clientSettings(env, parsed.client));
+      policyRules.effectiveProfile(decrypt(importedCipher, dataKey), policyState, fingerprint);
       clientStore.insert({ clientId: context.deviceId, label, receiverLabel,
         publicKeyFingerprint: fingerprint, address: context.address,
-        encryptedConfig: parsed.guest ? encrypt(saveProfile(parsed.config, parsed.guest), dataKey)
-          : encryptedProfile(parsed.config, label, profile, clientSettings(env, parsed.client)), createdAt: new Date().toISOString() });
-      return { status: 'ok', id: fingerprint, hasConfig: true };
+        encryptedConfig: importedCipher, createdAt: new Date().toISOString() }, policyState);
+      return { status: 'ok', id: fingerprint, hasConfig: true, policyMode:input?.policyMode || 'preserve' };
     });
   }
 
@@ -1084,6 +1141,8 @@ function createAwgService(env = process.env, dependencies = {}) {
       return buildAmneziaQrSeries(config);
     }
     const { config } = await getConfig(fingerprint);
+    try { QRCode.create(config, {errorCorrectionLevel:'M'}); }
+    catch { throw createHttpError(400,'client_qr_too_large','Конфиг слишком велик для QR AmneziaWG. Скачайте .conf или используйте составной QR AmneziaVPN.'); }
     return QRCode.toString(config, { type: 'svg', width: 512, margin: 1, errorCorrectionLevel: 'M' });
   }
 
@@ -1122,7 +1181,53 @@ function createAwgService(env = process.env, dependencies = {}) {
     return updatePeerMetadata(fingerprint, { note: value, telegram: noteStore.getTelegram(fingerprint) });
   }
 
-  return { listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
+  function preflightPolicies(state) {
+    let affected = 0, largeQr = 0;
+    for (const client of clientStore.activeByFingerprint().values()) {
+      if (!client.encryptedConfig) continue;
+      const effective = policyRules.effectiveProfile(decrypt(client.encryptedConfig,dataKey),state,client.publicKeyFingerprint);
+      const vpn = effective.guest ? encodeAmneziaGuest(effective.guest) : buildAmneziaVpn(effective.config,client.label,CLIENT_PARAMETER_ORDER,{legacy:true});
+      if (Buffer.byteLength(vpn) > 64 * 1024) throw policyRules.failure('client_policy_too_large');
+      try { QRCode.create(effective.config,{errorCorrectionLevel:'M'}); } catch { largeQr++; }
+      affected++;
+    }
+    return {savedConfigs:affected, largeQr};
+  }
+  async function getClientPolicies(fingerprint) {
+    return withGateLock(()=>{
+      const state = clientStore.policies();
+      if (fingerprint && !clientStore.findActive(fingerprint)?.encryptedConfig) throw createHttpError(404,'config_unavailable','Сначала импортируйте исходный конфиг клиента.');
+      return {revision:state.revision, obfuscation:state.obfuscation, routing:state.routing,
+        client:fingerprint ? state.clients[fingerprint] || {} : undefined, catalog:routingRules.catalog};
+    });
+  }
+  async function setClientPolicies(input, fingerprint) {
+    return withGateLock(()=>{
+      const state = clientStore.policies();
+      if (input?.expectedRevision !== state.revision) throw policyRules.failure('client_policy_changed',409);
+      const next = structuredClone(state);
+      if (fingerprint) {
+        if (!/^[a-f0-9]{12}$/.test(fingerprint) || !clientStore.findActive(fingerprint)?.encryptedConfig) throw createHttpError(404,'config_unavailable','Сначала импортируйте исходный конфиг клиента.');
+        const record = {...next.clients[fingerprint]};
+        for (const type of ['obfuscation','routing']) if (input[type] !== undefined) {
+          const value = input[type];
+          if (!value || typeof value !== 'object' || Array.isArray(value)) throw policyRules.failure();
+          record[type] = policyRules.binding(value.mode === 'override' ? {...value,value:type === 'routing'
+            ? routingRules.freezeRouting(value.value) : value.value} : value,type);
+        }
+        next.clients[fingerprint] = record;
+      } else {
+        if (!['obfuscation','routing'].includes(input.type)) throw policyRules.failure();
+        next[input.type] = input.type === 'routing' ? routingRules.freezeRouting(input.value) : policyRules.masking(input.value);
+      }
+      next.revision++;
+      const impact = preflightPolicies(next);
+      clientStore.savePolicies(next);
+      return {status:'ok',revision:next.revision,...impact};
+    });
+  }
+
+  return { getClientPolicies, setClientPolicies, generateSignature:profile=>policyRules.generateSignature(profile), listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
     readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
     getObfuscation:()=>withGateLock(()=>obfuscation.current()),
     generateObfuscation:input=>obfuscationRules.generate(input?.parameters),

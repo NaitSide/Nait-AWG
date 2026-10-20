@@ -3,6 +3,10 @@
 !.env.example
 node_modules/
 data/
+# The public routing snapshot belongs in source control; runtime data does not.
+!app/data/
+app/data/*
+!app/data/service-catalog.json
 *.db
 *.db-*
 *.sqlite

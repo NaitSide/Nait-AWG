@@ -391,7 +391,7 @@ function finishCreate() {
   if (createdPeer?.id) window.location.assign('/panel?selected=' + encodeURIComponent(createdPeer.id));
 }
 function closeModal(modal) {
-  if (modal.id === 'obfuscationModal' && modal.dataset.busy === 'true') return;
+  if (['obfuscationModal','clientPolicyModal'].includes(modal.id) && modal.dataset.busy === 'true') return;
   if (modal.id === 'createModal' && createBusy) return;
   if (modal.id === 'createModal' && createdPeer) return finishCreate();
   if (modal.id === 'editModal' && editBusy) return;
@@ -458,7 +458,7 @@ document.getElementById('clientConfigForm').addEventListener('submit', async eve
     if (!config.trim()) throw new Error('Выбранный файл пуст.');
     const response = await fetch('/api/peers/' + encodeURIComponent(row.dataset.peerId) + '/config/import', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-      body: JSON.stringify({ config })
+      body: JSON.stringify({ config, policyMode:document.getElementById('clientConfigPolicy').value })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || 'Не удалось импортировать конфиг.');
@@ -599,6 +599,7 @@ function openEdit(row) {
   document.getElementById('editTelegram').value = row.dataset.telegram || '';
   document.getElementById('editNote').value = row.dataset.note || '';
   document.getElementById('editError').hidden = true;
+  document.getElementById('openClientPolicies').disabled = row.dataset.hasConfig !== 'true';
   showModal('editModal');
   document.getElementById('editNote').focus();
 }
@@ -1025,7 +1026,7 @@ document.querySelectorAll('[data-close-modal]').forEach(button => button.addEven
 // Backdrops never dismiss dialogs: use explicit close controls or Escape.
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
-  const topModal = document.querySelector('#deleteModal.open') || document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#clientDownloadModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
+  const topModal = document.querySelector('#clientPolicyModal.open') || document.querySelector('#deleteModal.open') || document.querySelector('#clientConfigModal.open') || document.querySelector('#usageModal.open') || document.querySelector('#restoreModal.open') || document.querySelector('#backupModal.open') || document.querySelector('#accessModal.open') || document.querySelector('#clientDownloadModal.open') || document.querySelector('#qrModal.open') || document.querySelector('#editModal.open') || document.querySelector('#createModal.open');
   if (topModal) closeModal(topModal);
 });
 deleteForm.addEventListener('submit', event => {

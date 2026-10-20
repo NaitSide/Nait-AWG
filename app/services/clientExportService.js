@@ -46,8 +46,11 @@ function createAmneziaGuest(config, label, parameterNames, options = {}) {
 function encodeAmneziaGuest(guest, label = guest.description) {
   guest = {...guest, description: label};
   const plain = Buffer.from(JSON.stringify(guest), 'utf8');
+  if (plain.length > 256 * 1024) throw Object.assign(new Error('Конфиг слишком велик для экспорта AmneziaVPN.'), {status:400,code:'client_export_too_large'});
   const header = Buffer.alloc(4); header.writeUInt32BE(plain.length);
-  return 'vpn://' + Buffer.concat([header, deflateSync(plain, { level: 8 })]).toString('base64url');
+  const encoded = 'vpn://' + Buffer.concat([header, deflateSync(plain, { level: 8 })]).toString('base64url');
+  if (Buffer.byteLength(encoded) > 64 * 1024) throw Object.assign(new Error('Конфиг слишком велик для экспорта AmneziaVPN.'), {status:400,code:'client_export_too_large'});
+  return encoded;
 }
 function buildAmneziaVpn(config, label, parameterNames, options = {}) {
   return encodeAmneziaGuest(createAmneziaGuest(config, label, parameterNames, options));

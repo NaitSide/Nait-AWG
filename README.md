@@ -2,6 +2,8 @@
 
 <a href="README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="img/lang-ru.svg"><source media="(prefers-color-scheme: light)" srcset="img/lang-ru-light.svg"><img alt="Русский" src="img/lang-ru-light.svg" width="48" height="26"></picture></a> <a href="README.en.md"><picture><source media="(prefers-color-scheme: dark)" srcset="img/lang-en.svg"><source media="(prefers-color-scheme: light)" srcset="img/lang-en-light.svg"><img alt="English" src="img/lang-en-light.svg" width="48" height="26"></picture></a>
 
+**Версия: 0.1.2**
+
 Веб-панель для управления своим VPN-сервером AmneziaWG.
 
 ![Список клиентов Nait-AWG](img/clients.png)
@@ -99,7 +101,9 @@ QR-код для приложения AmneziaVPN — составной: на с
 
 > **Примечание:** при входе по IP с самоподписанным сертификатом браузер может не предлагать сохранить логин и пароль. У меня на Windows сохранение заработало после подключения домена.
 
-**Параметры обфускации.** Их можно отредактировать вручную или включить Edit mode и нажать «Случайные параметры» внизу страницы — панель сама сгенерирует допустимые значения.
+**Маскировка.** Можно выбрать QUIC, DNS или собственные дополнительные пакеты; расширенные параметры обфускации находятся в этом же разделе.
+
+**Раздельный туннель.** Весь трафик через VPN или только выбранные сервисы. Общие настройки можно переопределить в профиле клиента. После изменения нужно заново скачать конфиг или QR. [Источники списков, ограничения и проверка](docs/client-policies.md).
 
 **Мультиязычность.** Доступны русский и английский языки. Язык переключается на экране авторизации.
 

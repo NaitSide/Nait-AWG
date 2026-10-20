@@ -20,6 +20,8 @@ const native = parseClientConfig(officialConf,names);
 const parameters = Object.fromEntries(names.filter(name => native.client[name] !== undefined).map(name => [name,native.client[name]]));
 const fingerprint = key => crypto.createHash('sha256').update(key).digest('hex').slice(0,12);
 const key = number => Buffer.alloc(32,number).toString('base64');
+const {generateSignature} = require('./signatureService');
+const {freezeRouting} = require('./routingService');
 function unpack(vpn) {
   const packed=Buffer.from(vpn.slice(6),'base64url');
   const plain=inflateSync(packed.subarray(4));
@@ -80,6 +82,136 @@ function harness(overrides={}, initial=[]) {
   return {service:createAwgService(env,dependencies),dataPath,env,dependencies,mutations,
     setProfile:value=>{profile=value;},setConfig:value=>{config=value;}};
 }
+
+async function setGlobal(service,type,value) {
+  const current=await service.getClientPolicies();
+  return service.setClientPolicies({expectedRevision:current.revision,type,value});
+}
+async function setPersonal(service,id,values) {
+  const current=await service.getClientPolicies(id);
+  return service.setClientPolicies({expectedRevision:current.revision,...values},id);
+}
+test('client policies preserve ciphertext, key material and server peers across restart and all export representations',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Policy test'});
+  const db=new DatabaseSync(h.dataPath),before=db.prepare('SELECT encrypted_config FROM clients').get().encrypted_config;
+  const original=parseClientConfig((await h.service.getClientExport(peer.id)).config,names);
+  await setGlobal(h.service,'routing',{mode:'selected',services:['telegram']});
+  await setGlobal(h.service,'obfuscation',generateSignature('dns'));
+  assert.equal(db.prepare('SELECT encrypted_config FROM clients').get().encrypted_config,before);db.close();
+  const service=createAwgService(h.env,h.dependencies);
+  const conf=(await service.getClientExport(peer.id)).config;
+  const vpn=(await service.getClientExport(peer.id,'amneziavpn')).config;
+  assert.equal(vpn,(await service.getClientExport(peer.id,'amneziavpn')).config);
+  const a=parseClientConfig(conf,names),b=parseClientConfig(vpn,names);
+  assert.deepEqual(a.client,b.client);assert.deepEqual(a.server,b.server);
+  for(const name of ['PrivateKey','Address','HeaderProtectionKey','S1','H1'])assert.equal(a.client[name],original.client[name]);
+  for(const name of ['PublicKey','PresharedKey','Endpoint','PersistentKeepalive'])assert.equal(a.server[name],original.server[name]);
+  assert(!a.server.AllowedIPs.includes('0.0.0.0/0'));assert(a.server.AllowedIPs.includes('1.1.1.1/32'));
+  const awg=unpack(vpn).containers[0].awg,last=JSON.parse(awg.last_config);
+  assert.equal(awg.I1,a.client.I1);assert.equal(last.I1,a.client.I1);
+  assert.deepEqual(last.allowed_ips,a.server.AllowedIPs.split(', '));
+  assert.equal(h.mutations.length,1);assert.equal(h.mutations[0].allowedIp,peer.address);
+  assert.match(await service.getQr(peer.id),/^<svg/);
+  const {encodeAmneziaChunks}=require('./clientQrService');
+  const packed=Buffer.from(vpn.slice(6),'base64url');
+  const frames=encodeAmneziaChunks(packed);
+  const decoded=Buffer.concat(frames.map(frame=>Buffer.from(frame,'base64url').subarray(8)));
+  assert.deepEqual(decoded,packed);
+  assert((await service.getQr(peer.id,'amneziavpn')).frames.length===frames.length);
+});
+test('empty, unavailable and stale policy saves fail without mutations or revision changes',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Test'});
+  const before=await h.service.getClientPolicies();
+  for(const services of [[],['openai'],['unknown'],['anthropic']])await assert.rejects(setGlobal(h.service,'routing',{mode:'selected',services}));
+  await assert.rejects(h.service.setClientPolicies({expectedRevision:99,type:'routing',value:{mode:'all',services:[]}}),{code:'client_policy_changed'});
+  await assert.rejects(setPersonal(h.service,peer.id,{routing:null}),{code:'invalid_client_policy'});
+  assert.equal((await h.service.getClientPolicies()).revision,before.revision);assert.equal(h.mutations.length,1);
+});
+test('personal packets and routes survive general masking, shared obfuscation and return to inheritance',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Personal'});
+  const personal=generateSignature('dns');
+  await setPersonal(h.service,peer.id,{routing:{mode:'override',value:{mode:'selected',services:['telegram']}},obfuscation:{mode:'override',value:personal}});
+  await setGlobal(h.service,'routing',{mode:'all',services:[]});
+  await setGlobal(h.service,'obfuscation',generateSignature('none'));
+  const state=await h.service.getObfuscation();
+  await h.service.setObfuscation({parameters:{...parameters,S1:'24',S2:'24',S3:'24',S4:'24'},confirmed:true,expectedRevision:state.revision});
+  let parsed=parseClientConfig((await h.service.getClientExport(peer.id,'amneziavpn')).config,names);
+  assert.equal(parsed.client.I1,personal.packets.I1);assert.equal(parsed.client.S1,'24');
+  assert(!parsed.server.AllowedIPs.includes('0.0.0.0/0'));
+  await setPersonal(h.service,peer.id,{routing:{mode:'inherit'},obfuscation:{mode:'inherit'}});
+  const exported=(await h.service.getClientExport(peer.id,'amneziavpn')).config;
+  parsed=parseClientConfig(exported,names);
+  assert.equal(parsed.server.AllowedIPs,'0.0.0.0/0, ::/0');assert.equal(parsed.client.I1,undefined);
+  assert(parsed.client.HeaderProtectionKey);
+  const awg=unpack(exported).containers[0].awg;
+  for(const name of ['I1','I2','I3','I4','I5']){assert.equal(awg[name],'');assert.equal(JSON.parse(awg.last_config)[name],undefined);}
+});
+test('import explicitly preserves source policies by default and can adopt general settings',async()=>{
+  for(const choice of ['preserve','inherit']){
+    const parsed=parseClientConfig(officialConf,names),id=fingerprint(parsed.publicKey);
+    const h=harness({},[{publicKey:parsed.publicKey,psk:parsed.server.PresharedKey,allowedIps:[parsed.client.Address]}]);
+    await setGlobal(h.service,'obfuscation',generateSignature('none'));
+    await setGlobal(h.service,'routing',{mode:'selected',services:['telegram']});
+    await h.service.importClientConfig(id,{config:officialConf,...(choice==='inherit'?{policyMode:choice}:{})});
+    const result=parseClientConfig((await h.service.getClientExport(id)).config,names);
+    assert.equal(result.server.AllowedIPs,choice==='preserve'?parsed.server.AllowedIPs:require('./routingService').routesFor(freezeRouting({mode:'selected',services:['telegram']}),parsed.client.DNS));
+    assert.equal(result.client.PrivateKey,parsed.client.PrivateKey);
+  }
+});
+test('policy snapshots migrate to fresh fingerprints and require explicit source-mask restoration',async()=>{
+  const source=harness(),peer=await source.service.createPeer({label:'Move'});
+  const personal=generateSignature('dns');
+  await setPersonal(source.service,peer.id,{routing:{mode:'override',value:{mode:'selected',services:['telegram']}},obfuscation:{mode:'override',value:personal}});
+  const backup=await source.service.createBackup();
+  for(const restoreObfuscation of [false,true]){
+    const target=harness();
+    const pair=crypto.generateKeyPairSync('x25519');
+    const fresh={privateKey:pair.privateKey.export({format:'der',type:'pkcs8'}).subarray(-32).toString('base64'),
+      publicKey:pair.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('base64'),presharedKey:key(23)};
+    const service=createAwgService(target.env,{...target.dependencies,generateKeyMaterial:async()=>fresh});
+    // The source harness's server text has no AWG fields: add a real interface for opt-in restore.
+    if(restoreObfuscation) backup.payload.awg.config=backup.payload.awg.config.replace('\n[Peer]', '\n'+Object.entries(parameters).map(([k,v])=>`${k} = ${v}`).join('\n')+'\n[Peer]');
+    await service.restoreBackup(backup,null,{restoreObfuscation});
+    const id=fingerprint(fresh.publicKey),state=await service.getClientPolicies(id);
+    assert.equal(state.client.routing.mode,'override');
+    assert.equal(state.client.obfuscation?.value?.packets.I1,restoreObfuscation?personal.packets.I1:undefined);
+    const parsed=parseClientConfig((await service.getClientExport(id)).config,names);
+    assert(!parsed.server.AllowedIPs.includes('0.0.0.0/0'));assert.equal(parsed.client.PrivateKey,fresh.privateKey);
+  }
+});
+test('large selective profiles reject native QR clearly and retain full multipart exports',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Large'});
+  await setGlobal(h.service,'routing',{mode:'selected',services:['youtube','instagram','telegram']});
+  await setGlobal(h.service,'obfuscation',generateSignature('quic'));
+  const config=(await h.service.getClientExport(peer.id)).config;
+  await assert.rejects(h.service.getQr(peer.id),{code:'client_qr_too_large'});
+  const series=await h.service.getQr(peer.id,'amneziavpn');assert(series.frames.length>1);
+  const vpn=(await h.service.getClientExport(peer.id,'amneziavpn')).config;
+  assert.equal(parseClientConfig(vpn,names).server.AllowedIPs,parseClientConfig(config,names).server.AllowedIPs);
+});
+test('old snapshots without a policy table restore with destination defaults',async()=>{
+  const source=harness();await source.service.createPeer({label:'Old backup'});
+  const db=new DatabaseSync(source.dataPath);db.exec('DROP TABLE client_policies');db.close();
+  const backup=await source.service.createBackup();
+  const target=harness();await target.service.restoreBackup(backup);
+  const state=await target.service.getClientPolicies();assert.equal(state.routing,null);assert.equal(state.obfuscation,null);
+  assert.equal((await target.service.listPeers()).length,1);
+});
+test('a lost shared-obfuscation response reconciles policy and ciphertext from one durable journal',async()=>{
+  const h=harness(),peer=await h.service.createPeer({label:'Journal'});
+  const service=createAwgService(h.env,{...h.dependencies,receiver:async(route,options)=>{
+    const result=await h.dependencies.receiver(route,options);
+    if(route==='/awg/obfuscation'&&options?.method==='POST')throw Error('Synthetic lost response');
+    return result;
+  }});
+  const state=await service.getObfuscation(),packets=generateSignature('dns').packets;
+  await service.setObfuscation({parameters:{...parameters,...packets},expectedRevision:state.revision,confirmed:true});
+  const restarted=createAwgService(h.env,h.dependencies);
+  const effective=parseClientConfig((await restarted.getClientExport(peer.id)).config,names);
+  assert.equal(effective.client.I1,packets.I1);
+  assert.equal((await restarted.getClientPolicies()).obfuscation.packets.I1,packets.I1);
+  assert.equal(fs.existsSync(path.join(path.dirname(h.dataPath),'obfuscation-pending.json')),false);
+});
 
 test('official 3.1 guest fields and types match after decoding, including DNS placeholders',()=>{
   const parsed=parseClientConfig(encodeAmneziaGuest(official),names);
@@ -283,4 +415,15 @@ test('missing optional metadata remains absent through import; absent and empty 
   const saved=readProfile(saveProfile(parsed.config,parsed.guest));
   assert.equal(Object.hasOwn(saved.guest.containers[0].awg,'I2'),false);
   assert.equal(Object.hasOwn(JSON.parse(saved.guest.containers[0].awg.last_config),'mtu'),false);
+});
+
+test('migration rolls back when source routes cannot use the destination DNS',async()=>{
+  const source=harness();await source.service.createPeer({label:'Source'});
+  await setGlobal(source.service,'routing',{mode:'selected',services:['telegram']});
+  const backup=await source.service.createBackup();
+  const target=harness({CLIENT_DNS:'2606:4700:4700::1111'});
+  await assert.rejects(target.service.restoreBackup(backup),{code:'restore_panel_failed'});
+  assert.equal((await target.service.listPeers()).length,0);
+  assert.equal((await target.service.getClientPolicies()).routing,null);
+  assert.equal(target.mutations.length,2);
 });
