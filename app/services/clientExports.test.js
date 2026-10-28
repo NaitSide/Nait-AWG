@@ -502,3 +502,20 @@ test('QR eligibility follows personal routing and allows full-mode LAN bypass',a
  await setGlobal(h.service,'routing',{mode:'all',services:[]});
  await assert.rejects(h.service.getQr(peer.id),{code:'client_qr_split_disabled'});
 });
+
+test('excluded mode persists across restart and backup, exports both formats, and disables both QRs',async()=>{
+ const h=harness(),peer=await h.service.createPeer({label:'Direct payments'});
+ await setGlobal(h.service,'routing',{mode:'excluded',services:['sbp'],extras:{sbp:['91.231.236.245']},bypassLocal:true,choices:{selected:{services:['telegram'],custom:[]},excluded:{services:['sbp'],custom:[]}}});
+ const service=createAwgService(h.env,h.dependencies),state=await service.getClientPolicies();
+ assert.equal(state.routing.mode,'excluded');assert.deepEqual(state.routing.choices.selected.services,['telegram']);
+ const conf=parseClientConfig((await service.getClientExport(peer.id)).config,names),vpn=parseClientConfig((await service.getClientExport(peer.id,'amneziavpn')).config,names);
+ assert.equal(conf.server.AllowedIPs,vpn.server.AllowedIPs);assert(!conf.server.AllowedIPs.includes(':'));
+ const blocks=conf.server.AllowedIPs.split(', ').map(require('./routingService').cidr);
+ const covered=address=>{const n=address.split('.').reduce((n,v)=>n*256+Number(v),0);return blocks.some(b=>n>=b.start&&n<=b.end);};
+ assert(!covered('91.231.236.245'));assert(covered('8.8.8.8'));assert(!covered(conf.server.Endpoint.split(':')[0]));assert(!covered('192.168.1.1'));
+ for(const format of ['amneziawg','amneziavpn'])await assert.rejects(service.getQr(peer.id,format),{code:'client_qr_split_disabled'});
+ const backup=await service.createBackup(),target=harness();await target.service.restoreBackup(backup,null,{restoreObfuscation:false});
+ assert.deepEqual((await target.service.getClientPolicies()).routing,state.routing);
+ await setPersonal(service,peer.id,{routing:{mode:'override',value:{mode:'all',services:[]}},obfuscation:{mode:'override',value:generateSignature('none')}});
+ assert((await service.getQr(peer.id,'amneziavpn')).frames.length);
+});

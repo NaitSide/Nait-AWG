@@ -6,7 +6,7 @@
     constructor(prefix,{request,onChange,onBusy}) {
       Object.assign(this,{prefix,request,onChange,onBusy,token:0,catalog:{services:[]},draft:{custom:[],resolved:{}}});
       this.body=el(prefix+'Services');this.mode=el(prefix+'Mode');this.refreshButton=el(prefix+'Refresh');
-      this.mode.addEventListener('change',()=>{this.display();onChange();});
+      this.mode.addEventListener('change',()=>{this.cancelPending();this.capture();const next=this.mode.value;this.draft.mode=next;const choice=this.draft.choices[next]||{services:[],custom:[]};this.draft.services=choice.services;for(const row of this.draft.custom)row.enabled=choice.custom.includes(row.id);this.render();onChange();});
       this.body.addEventListener('change',()=>onChange());
       this.body.addEventListener('input',event=>{if(event.target.matches('[data-extra-ips]')){this.capture();this.updateAvailability();this.display();onChange();}else if(event.target.matches('[data-custom-name],[data-custom-ips]'))onChange();});
       el(prefix+'Add').addEventListener('click',()=>{
@@ -25,19 +25,22 @@
     }
     fill(value,catalog) {
       this.token++;this.onBusy(false);this.refreshButton.disabled=false;this.catalog=catalog||{services:[]};
-      this.draft=structuredClone({mode:value?.mode||'all',services:value?.services||[],custom:value?.custom||[],resolved:value?.resolved||{},extras:value?.extras||{},bypassLocal:value?.bypassLocal||false});
+      this.draft=structuredClone({mode:value?.mode||'all',services:value?.services||[],custom:value?.custom||[],resolved:value?.resolved||{},choices:value?.choices||{},extras:value?.extras||{},bypassLocal:value?.bypassLocal||false});
+      if(!this.draft.choices[this.draft.mode]&&this.draft.mode!=='all')this.draft.choices[this.draft.mode]={services:[...this.draft.services],custom:this.draft.custom.filter(row=>row.enabled).map(row=>row.id)};
       this.mode.value=this.draft.mode;el(this.prefix+'DnsStatus').textContent='';this.render();
       window.NaitDropdowns?.sync(this.mode);
     }
     cancelPending() {this.token++;this.onBusy(false);this.refreshButton.disabled=false;}
     capture() {
-      this.draft.mode=this.mode.value;
+
       this.draft.services=[...this.body.querySelectorAll('[data-service]:checked')].map(input=>input.dataset.service);
-      this.draft.extras=Object.fromEntries([...this.body.querySelectorAll('[data-extra-ips]')].map(input=>[input.dataset.extraIps,input.value.trim().split(/[\s,;]+/).filter(Boolean)]).filter(([,ips])=>ips.length));
+      for(const input of this.body.querySelectorAll('[data-extra-ips]')){const ips=input.value.trim().split(/[\s,;]+/).filter(Boolean);if(ips.length)this.draft.extras[input.dataset.extraIps]=ips;else delete this.draft.extras[input.dataset.extraIps];}
       this.draft.bypassLocal=Boolean(this.body.querySelector('[data-local]')?.checked);
       this.draft.custom=[...this.body.querySelectorAll('[data-custom-row]')].map(row=>({id:row.dataset.row,
         name:row.querySelector('[data-custom-name]').value.trim(),enabled:row.querySelector('input[type=checkbox]').checked,
         ipv4:row.querySelector('[data-custom-ips]').value.trim().split(/[\s,;]+/).filter(Boolean)}));
+      if(this.draft.mode!=='all')this.draft.choices[this.draft.mode]={services:[...this.draft.services],custom:this.draft.custom.filter(row=>row.enabled).map(row=>row.id)};
+      for(const choice of Object.values(this.draft.choices))choice.custom=choice.custom.filter(id=>this.draft.custom.some(row=>row.id===id));
       return this.draft;
     }
     read() {
@@ -67,14 +70,15 @@
       }
       cell.append(details);
     }
+    visibleServices(){return this.catalog.services.filter(service=>this.draft.mode==='excluded'?service.category==='direct':service.category!=='direct');}
     render() {
       this.body.replaceChildren();
-      for(const service of this.catalog.services) {
+      for(const service of this.visibleServices()) {
         const resolved=this.draft.resolved[service.id],available=service.available||Boolean(resolved?.ipv4.length)||Boolean(this.draft.extras[service.id]?.length);
         const row=node('tr',available?'':'route-unavailable'),check=node('td'),name=node('td'),addresses=node('td');
         const input=this.checkbox(service.name.ru,this.draft.services.includes(service.id),'service',service.id);
         input.dataset.available=String(available);input.dataset.baseAvailable=String(service.available||Boolean(resolved?.ipv4.length));check.append(input);
-        const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);
+        const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);if(service.id==='sbp'){name.append(node('small','route-description','НСПК, Сбер, Тиньков, ВТБ, Альфа-Банк'));}
         const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta'};
         const description=node('small','route-description',!available?'Обновите IP через DNS':!service.available?(resolved?.ipv4.length?'DNS-адреса':'Добавлено вручную'):labels[service.id]);
         name.append(description);this.addresses(addresses,[...new Set([...(resolved?.ipv4||[]),...service.ipv4])],service.id);
@@ -86,7 +90,7 @@
       }
       for(const custom of this.draft.custom) {
         const row=node('tr','route-custom'),check=node('td'),name=node('td'),addresses=node('td');
-        row.dataset.row=custom.id;row.dataset.customRow='';check.append(this.checkbox(t('Направлять через VPN'),custom.enabled,'customEnabled'));
+        row.dataset.row=custom.id;row.dataset.customRow='';check.append(this.checkbox(t(this.draft.mode==='excluded'?'Оставлять напрямую':'Направлять через VPN'),custom.enabled,'customEnabled'));
         const input=node('input','route-name-input');input.dataset.customName='';input.value=custom.name;input.maxLength=80;
         input.placeholder=t('Название сервиса');input.setAttribute('aria-label',t('Название своего сервиса'));
         const remove=node('button','route-remove','×');remove.type='button';remove.dataset.removeRoute=custom.id;
@@ -100,24 +104,27 @@
       check.append(this.checkbox(t('Оставлять локальные сети напрямую'),this.draft.bypassLocal,'local'));
       name.append(node('strong','route-service-name','Локальные сети'),node('small','route-description','Напрямую, без VPN'));
       this.addresses(addresses,['192.168.0.0/16','10.0.0.0/8','172.16.0.0/12']);
-      addresses.append(node('small','route-description','В полном режиме также исключаются локальные IPv6-сети.'));
+      if(this.draft.mode!=='excluded')addresses.append(node('small','route-description','В полном режиме также исключаются локальные IPv6-сети.'));
       local.append(check,name,addresses);this.body.append(local);
       el(this.prefix+'Add').disabled=this.draft.custom.length>=30;this.display();
     }
     updateAvailability(){for(const input of this.body.querySelectorAll('[data-service]'))input.dataset.available=String(input.dataset.baseAvailable==='true'||Boolean(this.draft.extras[input.dataset.service]?.length));}
     display() {
       const all=this.mode.value==='all';
-      el(this.prefix+'Warning').hidden=all;
+      const excluded=this.draft.mode==='excluded',warning=el(this.prefix+'Warning');warning.hidden=all;
+      warning.querySelector('[data-warning-selected]').hidden=excluded;warning.querySelector('[data-warning-excluded]').hidden=!excluded;
+      el(this.prefix+'CustomNote').textContent=t(excluded?"Отметьте «Локальные сети», чтобы оставить их доступными напрямую. Выбранные собственные IP и подсети также обходят VPN.":"Отметьте «Локальные сети», чтобы оставить их доступными напрямую. Собственные IP и подсети в остальных строках направляются через VPN.");
+      el(this.prefix+'InverseNote').hidden=!excluded;el(this.prefix+'LegacyNote').hidden=excluded;
       for(const input of this.body.querySelectorAll('[data-service]'))input.disabled=all||input.dataset.available!=='true';
       for(const input of this.body.querySelectorAll('[data-custom-enabled]'))input.disabled=all;
-      el(this.prefix+'ModeHelp').textContent=t(all?'Все внешние адреса идут через VPN. Локальные сети можно оставить напрямую.':'Отметьте сервисы, которые должны работать через VPN.');
+      el(this.prefix+'ModeHelp').textContent=t(excluded?'Отметьте сервисы, которые НЕ должны работать через VPN.':all?'Все внешние адреса идут через VPN. Локальные сети можно оставить напрямую.':'Отметьте сервисы, которые должны работать через VPN.');
       this.body.closest('table').classList.toggle('route-full-mode',all);
     }
     async refresh() {
       const token=++this.token,feedback=el(this.prefix+'DnsStatus');this.refreshButton.disabled=true;this.onBusy(true);this.onChange();
       feedback.textContent=t('Запрашиваем адреса через Cloudflare и Google DNS…');
       try {
-        const result=await this.request('/api/client-policies/resolve',{services:this.catalog.services.map(service=>service.id)});
+        const result=await this.request('/api/client-policies/resolve',{services:this.visibleServices().map(service=>service.id)});
         if(token!==this.token)return;
         this.capture();
         const next=structuredClone(this.draft.resolved);

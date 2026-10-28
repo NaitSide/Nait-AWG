@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "date": "2026-10-20",
+  "date": "2026-10-28",
   "services": [
     {
       "id": "telegram",
@@ -436,6 +436,227 @@
       "available": false,
       "ipv4": [],
       "sourceVersion": "2026-10-20",
+      "ipv6Count": 0
+    },
+    {
+      "id": "max",
+      "name": {
+        "ru": "MAX",
+        "en": "MAX"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://max.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "vk",
+      "name": {
+        "ru": "ВКонтакте",
+        "en": "VK"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://vk.com/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "mail",
+      "name": {
+        "ru": "Mail",
+        "en": "Mail"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://mail.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "ok",
+      "name": {
+        "ru": "Одноклассники",
+        "en": "Odnoklassniki"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://ok.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "dzen",
+      "name": {
+        "ru": "Дзен",
+        "en": "Dzen"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://dzen.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "rutube",
+      "name": {
+        "ru": "Rutube",
+        "en": "Rutube"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://rutube.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "yandex",
+      "name": {
+        "ru": "Яндекс",
+        "en": "Yandex"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://yandex.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "gosuslugi",
+      "name": {
+        "ru": "Госуслуги",
+        "en": "Gosuslugi"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://www.gosuslugi.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "ozon",
+      "name": {
+        "ru": "Ozon",
+        "en": "Ozon"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://www.ozon.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "wildberries",
+      "name": {
+        "ru": "Wildberries",
+        "en": "Wildberries"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://www.wildberries.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "avito",
+      "name": {
+        "ru": "Авито",
+        "en": "Avito"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
+        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+      },
+      "source": "https://www.avito.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "sbp",
+      "name": {
+        "ru": "СБП",
+        "en": "SBP"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "НСПК / СБП, Сбер, Тиньков, ВТБ и Альфа-Банк. DNS-снимок известных хостов; полное покрытие оплаты и банковских приложений требует проверки.",
+        "en": "NSPK / SBP, Sber, Tinkoff, VTB and Alfa-Bank. DNS snapshot of known hosts; complete payment and banking-app coverage requires testing."
+      },
+      "source": "https://qr.nspk.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "cupis-wallet",
+      "name": {
+        "ru": "Кошелёк ЦУПИС",
+        "en": "CUPIS Wallet"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса сайта, кошелька и поддержки ЦУПИС. Дополнительные API мобильного приложения могут потребовать ручного добавления; оплату по СБП проверяйте вместе с профилем «СБП».",
+        "en": "DNS addresses for the CUPIS website, wallet and support. Additional mobile-app APIs may need manual routes; test QR payments together with the SBP profile."
+      },
+      "source": "https://1cupis.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
       "ipv6Count": 0
     }
   ]

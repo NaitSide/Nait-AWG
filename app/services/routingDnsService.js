@@ -13,7 +13,20 @@ const domains = Object.freeze({
   signal:["chat.signal.org","storage.signal.org","cdn.signal.org","cdn2.signal.org","cdn3.signal.org","cdsi.signal.org","svr2.signal.org","contentproxy.signal.org","sfu.voip.signal.org","signal.org","signal.group","signal.me"],
   viber:["www.viber.com","secure.viber.com","account.viber.com","media.viber.com","pg.cdn.viber.com","share.viber.com","share.cdn.viber.com","content.cdn.viber.com","aloha.viber.com","ptt.viber.com","stickers-search.viber.com"],
   facebook:["www.facebook.com","m.facebook.com","graph.facebook.com","static.xx.fbcdn.net","scontent.xx.fbcdn.net","connect.facebook.net","www.messenger.com","edge-mqtt.facebook.com"],
-  twitter:["x.com","www.x.com","api.x.com","twitter.com","api.twitter.com","t.co","abs.twimg.com","pbs.twimg.com","video.twimg.com"]
+  twitter:["x.com","www.x.com","api.x.com","twitter.com","api.twitter.com","t.co","abs.twimg.com","pbs.twimg.com","video.twimg.com"],
+  max:["max.ru","web.max.ru"],
+  vk:["vk.com","api.vk.com","login.vk.com","vk.ru","id.vk.com"],
+  mail:["mail.ru","e.mail.ru","auth.mail.ru","id.mail.ru"],
+  ok:["ok.ru","connect.ok.ru","api.ok.ru"],
+  dzen:["dzen.ru","sso.dzen.ru"],
+  rutube:["rutube.ru","static.rutube.ru"],
+  yandex:["yandex.ru","ya.ru","passport.yandex.ru","api-maps.yandex.ru","yastatic.net","taxi.yandex.ru"],
+  gosuslugi:["www.gosuslugi.ru","esia.gosuslugi.ru","lk.gosuslugi.ru"],
+  ozon:["www.ozon.ru","api.ozon.ru","ir.ozone.ru"],
+  wildberries:["www.wildberries.ru","basket-01.wbbasket.ru","static-basket-01.wbbasket.ru"],
+  avito:["www.avito.ru","m.avito.ru","www.avito.st"],
+  sbp:["qr.nspk.ru","sub.nspk.ru","sbp.nspk.ru","uqr.nspk.ru","b2b.cbrpay.ru","www.sberbank.ru","online.sberbank.ru","tbank.ru","www.tbank.ru","api.tbank.ru","api.tinkoff.ru","www.tinkoff.ru","vtb.ru","www.vtb.ru","online.vtb.ru","alfabank.ru","click.alfabank.ru","web.alfabank.ru"],
+  'cupis-wallet':["1cupis.ru","wallet.1cupis.ru","chat.1cupis.ru"]
 });
 const providers = [{name:'Cloudflare',url:'https://cloudflare-dns.com/dns-query'},
   {name:'Google',url:'https://dns.google/resolve'}];
@@ -32,6 +45,7 @@ function createRoutingDnsService({fetch:fetcher=globalThis.fetch,now=()=>Date.no
   const cache=new Map();
   let pending=null;
   async function resolve(ids) {
+    const deadline=AbortSignal.timeout(20000);
     const results=Object.fromEntries(ids.map(id=>[id,{ipv4:[],sources:[],failedQueries:0}]));
     const tasks=ids.flatMap(id=>domains[id].flatMap(domain=>providers.map(provider=>({id,domain,provider}))));
     let index=0;
@@ -41,7 +55,7 @@ function createRoutingDnsService({fetch:fetcher=globalThis.fetch,now=()=>Date.no
         try {
           const url=new URL(provider.url);url.searchParams.set('name',domain);url.searchParams.set('type','A');
           if(provider.name==='Google')url.searchParams.set('edns_client_subnet','0.0.0.0/0');
-          const response=await fetcher(url,{headers:{accept:'application/dns-json'},redirect:'error',signal:AbortSignal.timeout(4000)});
+          const response=await fetcher(url,{headers:{accept:'application/dns-json'},redirect:'error',signal:AbortSignal.any([deadline,AbortSignal.timeout(4000)])});
           const data=await jsonResponse(response);
           if(data.Status!==0 || data.TC===true || !Array.isArray(data.Answer) || data.Answer.length>256)throw Error('DNS has no usable answer');
           const addresses=data.Answer.filter(record=>record.type===1&&publicAddress(record.data)).map(record=>record.data+'/32');

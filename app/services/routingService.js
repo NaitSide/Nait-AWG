@@ -1,5 +1,6 @@
 'use strict';
 const net = require('node:net');
+const {invertIPv4}=require('./ipv4Inverter');
 function invalid(code = 'invalid_service_catalog') {
   return Object.assign(new Error('Некорректный каталог или выбор сервисов.'), {status: 400, code});
 }
@@ -27,7 +28,7 @@ function union(routes) {
 }
 function validateCatalog(value) {
   if (value?.version !== 1 || !/^\d{4}-\d{2}-\d{2}$/.test(value.date || '')
-      || !Array.isArray(value.services) || value.services.length > 20) throw invalid();
+      || !Array.isArray(value.services) || value.services.length > 48) throw invalid();
   if (!Number.isFinite(Date.parse(value.date)) || new Date(value.date).toISOString().slice(0,10) !== value.date) throw invalid();
   const ids = new Set();
   const forbidden = ['0.0.0.0/8','10.0.0.0/8','100.64.0.0/10','127.0.0.0/8','169.254.0.0/16',
@@ -39,6 +40,7 @@ function validateCatalog(value) {
         || typeof service.source !== 'string' || !service.source.startsWith('https://')
         || typeof service.sourceVersion !== 'string' || service.sourceVersion.length < 1 || service.sourceVersion.length > 120
         || typeof service.available !== 'boolean' || !Array.isArray(service.ipv4)) throw invalid();
+    if(service.category!==undefined&&service.category!=='direct')throw invalid();
     ids.add(service.id);
     service.ipv4 = union(service.ipv4);
     if (service.available && !service.ipv4.length) throw invalid();
@@ -89,14 +91,22 @@ function serviceExtras(value = {}) {
   }));
 }
 function validateRouting(value, allowUnavailable = false) {
-  if (!value || !['all','selected'].includes(value.mode) || !Array.isArray(value.services)
+  if (!value || !['all','selected','excluded'].includes(value.mode) || !Array.isArray(value.services)
       || value.services.length > catalog.services.length) throw invalid('invalid_routing_policy');
   const ids = [...new Set(value.services)].sort();
   const custom = customRows(value.custom), resolved = resolvedServices(value.resolved), extras = serviceExtras(value.extras);
   if (value.bypassLocal !== undefined && typeof value.bypassLocal !== 'boolean') throw invalid();
   if (ids.some(id => !catalog.services.some(service => service.id === id && (allowUnavailable || service.available || resolved[id]?.ipv4.length || extras[id]?.length)))
       || (value.mode === 'selected' && !ids.length && !custom.some(row => row.enabled))) throw invalid('empty_or_unavailable_services');
-  return {mode:value.mode,services:value.mode === 'all' ? [] : ids,
+  let choices;
+  if(value.choices!==undefined){
+    if(!value.choices||typeof value.choices!=='object'||Array.isArray(value.choices)||Object.keys(value.choices).some(key=>!['selected','excluded'].includes(key)))throw invalid();
+    choices=Object.fromEntries(Object.entries(value.choices).map(([key,item])=>{
+      if(!item||!Array.isArray(item.services)||item.services.length>catalog.services.length||item.services.some(id=>!catalog.services.some(s=>s.id===id))||!Array.isArray(item.custom)||item.custom.length>30||item.custom.some(id=>!custom.some(row=>row.id===id)))throw invalid();
+      return [key,{services:[...new Set(item.services)].sort(),custom:[...new Set(item.custom)].sort()}];
+    }));
+  }
+  return {...(choices?{choices}:{}),mode:value.mode,services:value.mode === 'all' ? [] : ids,
     ...(value.extras !== undefined ? {extras} : {}), ...(value.custom !== undefined ? {custom} : {}), ...(value.resolved !== undefined ? {resolved} : {}),
     ...(value.bypassLocal !== undefined ? {bypassLocal:value.bypassLocal} : {})};
 }
@@ -133,6 +143,17 @@ function publicIpv6Routes() {
 }
 function routesFor(value, dns, endpoint) {
   const policy = validateRouting(value, Array.isArray(value?.ipv4));
+  if(policy.mode==='excluded'){
+    const host=endpointHost(endpoint),exclusions=value.ipv4||freezeRouting(value).ipv4;
+    const parsedDns=String(dns||'').split(',').map(s=>s.trim()).filter(Boolean);
+    for(const address of parsedDns){
+      if(net.isIP(address)!==4)throw Object.assign(invalid('split_dns_ipv4_required'),{message:'Для выборочных маршрутов нужен DNS с IPv4-адресом.'});
+      if(publicAddress(address)&&exclusions.map(cidr).some(block=>ipv4(address)>=block.start&&ipv4(address)<=block.end))throw Object.assign(invalid('excluded_dns_overlap'),{message:'DNS входит в исключения. Выберите другой DNS или измените исключения.'});
+    }
+    const result=invertIPv4([...exclusions,host+'/32',...(policy.bypassLocal?LOCAL_NETWORKS:[])]);
+    if(!result.length)throw invalid('empty_or_unavailable_services');
+    return result.join(', ');
+  }
   if (policy.mode === 'all') {
     if (!policy.bypassLocal) return '0.0.0.0/0, ::/0';
     const host = endpointHost(endpoint);
@@ -150,7 +171,7 @@ function routesFor(value, dns, endpoint) {
 }
 function freezeRouting(value) {
   const policy = validateRouting(value);
-  return {...policy, catalogDate: catalog.date, ipv4: policy.mode === 'selected'
+  return {...policy, catalogDate: catalog.date, ipv4: policy.mode !== 'all'
     ? union([...policy.services.flatMap(id => [...catalog.services.find(service => service.id === id).ipv4,...(policy.resolved?.[id]?.ipv4 || []),...(policy.extras?.[id] || [])]),
       ...(policy.custom || []).filter(row=>row.enabled).flatMap(row=>row.ipv4)]) : []};
 }

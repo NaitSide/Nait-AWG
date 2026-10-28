@@ -1155,7 +1155,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     const { config } = await getConfig(fingerprint);
     const routing=policyRules.selected(clientStore.policies(),fingerprint,'routing');
     const importedSelective=!routing && !parseClientConfig(config,PARAMETER_NAMES).server.AllowedIPs.split(/,\s*/).includes('0.0.0.0/0');
-    if(routing?.mode==='selected'||importedSelective)throw createHttpError(409,'client_qr_split_disabled','QR-код недоступен при раздельном туннелировании. Используйте файл конфигурации.');
+    if((routing&&routing.mode!=='all')||importedSelective)throw createHttpError(409,'client_qr_split_disabled','QR-код недоступен при раздельном туннелировании. Используйте файл конфигурации.');
     if (format === 'amneziavpn') {
       const {config}=await getClientExport(fingerprint,format);
       return buildAmneziaQrSeries(config);
