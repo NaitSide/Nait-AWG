@@ -2,6 +2,10 @@
 // Russian source messages are stable gettext-style keys. Do not translate user data.
 (() => {
   const en = {
+    "Сервисы Яндекса":"Yandex services",
+    "Официальные IPv4-сети Яндекса, снимок AS13238 и DNS-адреса, включая Карты и Интернетометр. Сервисы на общих адресах тоже идут напрямую; отдельные внешние CDN могут потребовать дополнений.":"Official Yandex IPv4 networks, the AS13238 snapshot and DNS addresses, including Maps and Internetometer. Services sharing these IPs also connect directly; some external CDNs may need additional routes.",
+    "Сайт и CDN":"Website and CDN",
+    "Сайт, API и CDN Столичек, SmartCaptcha и сопутствующие хосты из пользовательского захвата. Список не подтверждает полное покрытие iOS-приложения. На общих IP могут работать другие сервисы.":"Stolichki website, API and CDN, SmartCaptcha and companion hosts from a user capture. Complete iOS app coverage is not confirmed. Shared IPs may also host other services.",
 "Аптека Столички":"Stolichki Pharmacy",
 "Сети Яндекса":"Yandex networks",
 "Сети электронного правительства":"Electronic-government networks",

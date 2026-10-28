@@ -543,16 +543,16 @@
     {
       "id": "yandex",
       "name": {
-        "ru": "Яндекс",
-        "en": "Yandex"
+        "ru": "Сервисы Яндекса",
+        "en": "Yandex services"
       },
       "category": "direct",
       "description": {
-        "ru": "Собственные сети Яндекса AS13238 и DNS-адреса сервисов, включая Карты и Интернетометр. Другие сервисы в этих сетях также обходят VPN. Yandex Cloud целиком не включён.",
-        "en": "Yandex AS13238 networks and DNS addresses, including Maps and Internetometer. Other services on these networks also bypass the VPN. The entire Yandex Cloud network is not included."
+        "ru": "Официальные IPv4-сети Яндекса, снимок AS13238 и DNS-адреса, включая Карты и Интернетометр. Сервисы на общих адресах тоже идут напрямую; отдельные внешние CDN могут потребовать дополнений.",
+        "en": "Official Yandex IPv4 networks, the AS13238 snapshot and DNS addresses, including Maps and Internetometer. Services sharing these IPs also connect directly; some external CDNs may need additional routes."
       },
-      "source": "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS13238",
-      "sourceVersion": "2026-10-28T08:00:00",
+      "source": "https://yandex.ru/ips",
+      "sourceVersion": "2026-10-28 official IPv4 + AS13238",
       "available": true,
       "ipv4": [
         "5.45.192.0/18",
@@ -562,12 +562,12 @@
         "77.88.0.0/18",
         "84.252.160.0/19",
         "87.250.224.0/19",
+        "90.156.176.0/20",
         "92.255.112.0/20",
         "93.158.128.0/18",
         "95.108.128.0/17",
         "141.8.128.0/18",
-        "178.154.128.0/19",
-        "178.154.160.0/19",
+        "178.154.128.0/18",
         "185.32.187.0/24",
         "213.180.192.0/19"
       ],
@@ -685,13 +685,19 @@
       },
       "category": "direct",
       "description": {
-        "ru": "DNS-адреса сайта и API приложения Аптека Столички. Полное покрытие приложения и сторонних ресурсов требует проверки.",
-        "en": "DNS addresses for the Stolichki Pharmacy website and app API. Complete app and third-party coverage requires testing."
+        "ru": "Сайт, API и CDN Столичек, SmartCaptcha и сопутствующие хосты из пользовательского захвата. Список не подтверждает полное покрытие iOS-приложения. На общих IP могут работать другие сервисы.",
+        "en": "Stolichki website, API and CDN, SmartCaptcha and companion hosts from a user capture. Complete iOS app coverage is not confirmed. Shared IPs may also host other services."
       },
       "source": "https://stolichki.ru/",
-      "sourceVersion": "2026-10-28",
-      "available": false,
-      "ipv4": [],
+      "sourceVersion": "2026-10-28 DNS + TLS SNI capture",
+      "available": true,
+      "ipv4": [
+        "109.238.88.146/32",
+        "91.231.235.125/32",
+        "185.31.113.61/32",
+        "84.201.151.229/32",
+        "45.12.229.27/32"
+      ],
       "ipv6Count": 0
     }
   ]

@@ -107,7 +107,7 @@ I've checked this on an iPhone — it works. On some Android devices, the Amnezi
 
 **Languages.** Russian and English are available. Switch languages on the login screen.
 
-### Tunneling
+### Split tunneling
 
 Route all traffic through the VPN or choose one of two experimental modes.
 

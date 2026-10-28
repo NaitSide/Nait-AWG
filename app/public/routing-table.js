@@ -79,7 +79,7 @@
         const input=this.checkbox(service.name.ru,this.draft.services.includes(service.id),'service',service.id);
         input.dataset.available=String(available);input.dataset.baseAvailable=String(service.available||Boolean(resolved?.ipv4.length));check.append(input);
         const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);if(service.id==='sbp'){name.append(node('small','route-description','НСПК, Сбер, Тиньков, ВТБ, Альфа-Банк'));}
-        const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta',yandex:'Сети Яндекса',gosuslugi:'Сети электронного правительства'};
+        const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta',yandex:'Сети Яндекса',gosuslugi:'Сети электронного правительства',stolichki:'Сайт и CDN'};
         const description=node('small','route-description',!available?'Обновите IP через DNS':!service.available?(resolved?.ipv4.length?'DNS-адреса':'Добавлено вручную'):labels[service.id]);
         name.append(description);this.addresses(addresses,[...new Set([...(resolved?.ipv4||[]),...service.ipv4])],service.id);
         if(resolved) {

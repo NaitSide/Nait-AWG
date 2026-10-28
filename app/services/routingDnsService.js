@@ -28,7 +28,7 @@ const domains = Object.freeze({
   avito:["www.avito.ru","m.avito.ru","www.avito.st"],
   sbp:["qr.nspk.ru","sub.nspk.ru","sbp.nspk.ru","uqr.nspk.ru","b2b.cbrpay.ru","www.sberbank.ru","online.sberbank.ru","tbank.ru","www.tbank.ru","api.tbank.ru","api.tinkoff.ru","www.tinkoff.ru","vtb.ru","www.vtb.ru","online.vtb.ru","alfabank.ru","click.alfabank.ru","web.alfabank.ru"],
   'cupis-wallet':["1cupis.ru","wallet.1cupis.ru","chat.1cupis.ru"],
-  stolichki:["stolichki.ru","www.stolichki.ru","api.stolichki.ru"]
+  stolichki:["stolichki.ru","www.stolichki.ru","api.stolichki.ru","api2.stolichki.ru","cdn.stolichki.ru","smartcaptcha.yandexcloud.net","prisma-test.d-services.ru","api.privet.d-services.ru","ws.privet.d-services.ru"]
 });
 const providers = [{name:'Cloudflare',url:'https://cloudflare-dns.com/dns-query'},
   {name:'Google',url:'https://dns.google/resolve'},{name:'Yandex'}];
