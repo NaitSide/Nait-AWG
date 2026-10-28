@@ -1,4 +1,5 @@
 'use strict';
+const {queryYandexA}=require('./yandexDns');
 const {catalog, publicAddress, union} = require('./routingService');
 // A bounded list of public service names. No user-provided URLs, DNS servers or domains are fetched.
 const domains = Object.freeze({
@@ -20,16 +21,17 @@ const domains = Object.freeze({
   ok:["ok.ru","connect.ok.ru","api.ok.ru"],
   dzen:["dzen.ru","sso.dzen.ru"],
   rutube:["rutube.ru","static.rutube.ru"],
-  yandex:["yandex.ru","ya.ru","passport.yandex.ru","api-maps.yandex.ru","yastatic.net","taxi.yandex.ru"],
-  gosuslugi:["www.gosuslugi.ru","esia.gosuslugi.ru","lk.gosuslugi.ru"],
+  yandex:["yandex.ru","ya.ru","passport.yandex.ru","api-maps.yandex.ru","yastatic.net","taxi.yandex.ru","geocode-maps.yandex.ru","suggest-maps.yandex.ru","static-maps.yandex.ru","maps.yandex.ru","internet.yandex.ru","ipv4-internet.yandex.net","core-renderer-tiles.maps.yandex.net","man.proxy.mob.maps.yandex.net","mobile-maps-common.s3.yandex.net","mobmaps-proxy-api-ext-bb.maps.yandex.net","proxy.mob.maps.yandex.net","proxy.mob.virtual.maps.yandex.net","uz.mob.maps.yandex.net"],
+  gosuslugi:["af.gosuslugi.ru","auto.gosuslugi.ru","bot.gosuslugi.ru","commission.gosuslugi.ru","cras.gosuslugi.ru","do.gosuslugi.ru","dom.gosuslugi.ru","download.gosuslugi.ru","elections.gosuslugi.ru","eln.gosuslugi.ru","epgu.gosuslugi.ru","esia.gosuslugi.ru","goskey.gosuslugi.ru","gosuslugi.ru","gu-st.ru","knd.gosuslugi.ru","lk.gosuslugi.ru","map.gosuslugi.ru","max.gosuslugi.ru","oplata.gosuslugi.ru","pay.gosuslugi.ru","payment.gosuslugi.ru","pos.gosuslugi.ru","roles.gosuslugi.ru","sign-sdk.gosuslugi.ru","www.gosuslugi.ru","www2.gosuslugi.ru"],
   ozon:["www.ozon.ru","api.ozon.ru","ir.ozone.ru"],
   wildberries:["www.wildberries.ru","basket-01.wbbasket.ru","static-basket-01.wbbasket.ru"],
   avito:["www.avito.ru","m.avito.ru","www.avito.st"],
   sbp:["qr.nspk.ru","sub.nspk.ru","sbp.nspk.ru","uqr.nspk.ru","b2b.cbrpay.ru","www.sberbank.ru","online.sberbank.ru","tbank.ru","www.tbank.ru","api.tbank.ru","api.tinkoff.ru","www.tinkoff.ru","vtb.ru","www.vtb.ru","online.vtb.ru","alfabank.ru","click.alfabank.ru","web.alfabank.ru"],
-  'cupis-wallet':["1cupis.ru","wallet.1cupis.ru","chat.1cupis.ru"]
+  'cupis-wallet':["1cupis.ru","wallet.1cupis.ru","chat.1cupis.ru"],
+  stolichki:["stolichki.ru","www.stolichki.ru","api.stolichki.ru"]
 });
 const providers = [{name:'Cloudflare',url:'https://cloudflare-dns.com/dns-query'},
-  {name:'Google',url:'https://dns.google/resolve'}];
+  {name:'Google',url:'https://dns.google/resolve'},{name:'Yandex'}];
 function failure(code,message,status=400) {return Object.assign(new Error(message),{code,status});}
 async function jsonResponse(response) {
   if(!response.ok) throw Error('DNS HTTP error');
@@ -41,7 +43,7 @@ async function jsonResponse(response) {
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
-function createRoutingDnsService({fetch:fetcher=globalThis.fetch,now=()=>Date.now()}={}) {
+function createRoutingDnsService({fetch:fetcher=globalThis.fetch,now=()=>Date.now(),resolveYandex=queryYandexA}={}) {
   const cache=new Map();
   let pending=null;
   async function resolve(ids) {
@@ -53,10 +55,16 @@ function createRoutingDnsService({fetch:fetcher=globalThis.fetch,now=()=>Date.no
       while(index<tasks.length) {
         const {id,domain,provider}=tasks[index++],entry=results[id];
         try {
+          let data;
+          if(provider.name==='Yandex'){
+            const ips=await resolveYandex(domain,AbortSignal.any([deadline,AbortSignal.timeout(4000)]));
+            data={Status:0,Answer:ips.map(data=>({type:1,data}))};
+          }else{
           const url=new URL(provider.url);url.searchParams.set('name',domain);url.searchParams.set('type','A');
           if(provider.name==='Google')url.searchParams.set('edns_client_subnet','0.0.0.0/0');
           const response=await fetcher(url,{headers:{accept:'application/dns-json'},redirect:'error',signal:AbortSignal.any([deadline,AbortSignal.timeout(4000)])});
-          const data=await jsonResponse(response);
+          data=await jsonResponse(response);
+          }
           if(data.Status!==0 || data.TC===true || !Array.isArray(data.Answer) || data.Answer.length>256)throw Error('DNS has no usable answer');
           const addresses=data.Answer.filter(record=>record.type===1&&publicAddress(record.data)).map(record=>record.data+'/32');
           if(!addresses.length)throw Error('DNS has no public IPv4');

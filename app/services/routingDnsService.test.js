@@ -1,15 +1,16 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {createRoutingDnsService}=require('./routingDnsService');
+const {createRoutingDnsService:makeRoutingDnsService}=require('./routingDnsService');
+const createRoutingDnsService=options=>makeRoutingDnsService({resolveYandex:async()=>{throw Error('Synthetic Yandex outage');},...options});
 const answer=(records,status=0)=>new Response(JSON.stringify({Status:status,Answer:records.map(data=>({type:1,data}))}));
 test('DNS refresh uses both fixed HTTPS providers, deduplicates public A records and caches a preview',async()=>{
   const calls=[];
-  const resolver=createRoutingDnsService({fetch:async(url,options)=>{
+  const resolver=createRoutingDnsService({resolveYandex:async()=>['8.8.8.8'],fetch:async(url,options)=>{
     calls.push({url,options});return answer(['8.8.8.8','8.8.8.8','192.168.1.1','127.0.0.1','203.0.113.1','::1']);
   }});
   const result=await resolver.refresh({services:['youtube']});
   assert.deepEqual(result.resolved.youtube.ipv4,['8.8.8.8/32']);
-  assert.deepEqual(result.resolved.youtube.sources,['Cloudflare','Google']);assert.deepEqual(result.failed,[]);
+  assert.deepEqual(result.resolved.youtube.sources,['Cloudflare','Google','Yandex']);assert.deepEqual(result.failed,[]);
   assert.equal(calls.length,8);assert(calls.every(call=>call.url.protocol==='https:'&&call.options.redirect==='error'));
   assert(calls.every(call=>['dns.google','cloudflare-dns.com'].includes(call.url.hostname)));
   result.resolved.youtube.ipv4=[];
@@ -42,7 +43,7 @@ test('WhatsApp and TikTok refresh independently and survive saved routing/export
   const {domains}=require('./routingDnsService');
   assert.deepEqual(Object.keys(domains).sort(),catalog.services.map(s=>s.id).sort());
   const calls=[];
-  const resolver=createRoutingDnsService({fetch:async url=>{
+  const resolver=createRoutingDnsService({resolveYandex:async name=>[name.includes('whatsapp')?'1.1.1.1':'9.9.9.9'],fetch:async url=>{
     const name=url.searchParams.get('name');calls.push(name);
     return answer([name.includes('whatsapp')?'1.1.1.1':'9.9.9.9']);
   }});
@@ -65,7 +66,7 @@ test('new messenger and social profiles keep DNS snapshots separate and deduplic
   const {domains}=require('./routingDnsService');
   const ids=['discord','signal','viber','facebook','twitter'];
   const addresses=Object.fromEntries(ids.map((id,i)=>[id,'9.9.9.'+(10+i)]));
-  const resolver=createRoutingDnsService({fetch:async url=>{
+  const resolver=createRoutingDnsService({resolveYandex:async name=>[addresses[ids.find(id=>domains[id].includes(name))]],fetch:async url=>{
     const id=ids.find(id=>domains[id].includes(url.searchParams.get('name')));
     assert(id);return answer([addresses[id]]);
   }});

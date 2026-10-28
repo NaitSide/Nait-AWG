@@ -77,7 +77,7 @@ function resolvedServices(value = {}) {
   return Object.fromEntries(Object.entries(value).map(([id, item]) => {
     if (!catalog.services.some(service => service.id === id) || !item || !Array.isArray(item.ipv4)
         || item.ipv4.length > 256 || !item.ipv4.length || !Number.isFinite(Date.parse(item.updatedAt))
-        || !Array.isArray(item.sources) || !item.sources.length || item.sources.length > 2 || item.sources.some(source => !['Google','Cloudflare'].includes(source))) throw invalid();
+        || !Array.isArray(item.sources) || !item.sources.length || item.sources.length > 3 || item.sources.some(source => !['Google','Cloudflare','Yandex'].includes(source))) throw invalid();
     const routes = union(item.ipv4);
     if (routes.some(route => !route.endsWith('/32') || !publicAddress(route.slice(0,-3)))) throw invalid();
     return [id, {ipv4:routes,updatedAt:new Date(item.updatedAt).toISOString(),sources:[...new Set(item.sources)].sort()}];

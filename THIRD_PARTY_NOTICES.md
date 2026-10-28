@@ -16,3 +16,7 @@ Nait-AWG поставляет сохранённый официальный се
 ## Иконки интерфейса
 
 Иконки Lucide (`venetian-mask`, `split`, `refresh-cw`): [исходный проект](https://github.com/lucide-icons/lucide), [лицензия и уведомления об авторских правах](licenses/lucide-LICENSE.txt). SVG-пути взяты из Lucide 1.8.0.
+
+## Домены Госуслуг и Яндекс Карт
+
+Часть фактических доменных имён взята из [RU Direct](https://github.com/kyoresuas/ru-direct), конфигурации government.json и yandex.json, и проверяется через DNS. [MIT](licenses/ru-direct-MIT.txt). Сети AS196747 и AS13238 получены из RIPEstat; применяются те же условия RIPEstat, что для AS32934.

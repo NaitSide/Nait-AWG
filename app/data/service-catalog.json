@@ -548,13 +548,29 @@
       },
       "category": "direct",
       "description": {
-        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
-        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+        "ru": "Собственные сети Яндекса AS13238 и DNS-адреса сервисов, включая Карты и Интернетометр. Другие сервисы в этих сетях также обходят VPN. Yandex Cloud целиком не включён.",
+        "en": "Yandex AS13238 networks and DNS addresses, including Maps and Internetometer. Other services on these networks also bypass the VPN. The entire Yandex Cloud network is not included."
       },
-      "source": "https://yandex.ru/",
-      "sourceVersion": "2026-10-28",
-      "available": false,
-      "ipv4": [],
+      "source": "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS13238",
+      "sourceVersion": "2026-10-28T08:00:00",
+      "available": true,
+      "ipv4": [
+        "5.45.192.0/18",
+        "5.255.192.0/18",
+        "37.9.64.0/18",
+        "37.140.128.0/18",
+        "77.88.0.0/18",
+        "84.252.160.0/19",
+        "87.250.224.0/19",
+        "92.255.112.0/20",
+        "93.158.128.0/18",
+        "95.108.128.0/17",
+        "141.8.128.0/18",
+        "178.154.128.0/19",
+        "178.154.160.0/19",
+        "185.32.187.0/24",
+        "213.180.192.0/19"
+      ],
       "ipv6Count": 0
     },
     {
@@ -565,13 +581,15 @@
       },
       "category": "direct",
       "description": {
-        "ru": "DNS-адреса основных доменов. Приложение и CDN могут использовать дополнительные IP-адреса.",
-        "en": "DNS addresses of core domains. Apps and CDNs may use additional IP addresses."
+        "ru": "Сети электронного правительства AS196747 и DNS-адреса портала, ЕСИА, API и ресурсов Госуслуг. Дополнительные узлы приложения могут потребовать ручного добавления.",
+        "en": "Electronic-government AS196747 networks and DNS addresses for the portal, ESIA, APIs and Gosuslugi assets. Additional app hosts may need manual routes."
       },
-      "source": "https://www.gosuslugi.ru/",
-      "sourceVersion": "2026-10-28",
-      "available": false,
-      "ipv4": [],
+      "source": "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS196747",
+      "sourceVersion": "2026-10-28T08:00:00",
+      "available": true,
+      "ipv4": [
+        "109.207.0.0/20"
+      ],
       "ipv6Count": 0
     },
     {
@@ -654,6 +672,23 @@
         "en": "DNS addresses for the CUPIS website, wallet and support. Additional mobile-app APIs may need manual routes; test QR payments together with the SBP profile."
       },
       "source": "https://1cupis.ru/",
+      "sourceVersion": "2026-10-28",
+      "available": false,
+      "ipv4": [],
+      "ipv6Count": 0
+    },
+    {
+      "id": "stolichki",
+      "name": {
+        "ru": "Аптека Столички",
+        "en": "Stolichki Pharmacy"
+      },
+      "category": "direct",
+      "description": {
+        "ru": "DNS-адреса сайта и API приложения Аптека Столички. Полное покрытие приложения и сторонних ресурсов требует проверки.",
+        "en": "DNS addresses for the Stolichki Pharmacy website and app API. Complete app and third-party coverage requires testing."
+      },
+      "source": "https://stolichki.ru/",
       "sourceVersion": "2026-10-28",
       "available": false,
       "ipv4": [],

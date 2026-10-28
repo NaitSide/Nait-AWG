@@ -79,12 +79,13 @@
         const input=this.checkbox(service.name.ru,this.draft.services.includes(service.id),'service',service.id);
         input.dataset.available=String(available);input.dataset.baseAvailable=String(service.available||Boolean(resolved?.ipv4.length));check.append(input);
         const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);if(service.id==='sbp'){name.append(node('small','route-description','НСПК, Сбер, Тиньков, ВТБ, Альфа-Банк'));}
-        const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta'};
+        const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta',yandex:'Сети Яндекса',gosuslugi:'Сети электронного правительства'};
         const description=node('small','route-description',!available?'Обновите IP через DNS':!service.available?(resolved?.ipv4.length?'DNS-адреса':'Добавлено вручную'):labels[service.id]);
         name.append(description);this.addresses(addresses,[...new Set([...(resolved?.ipv4||[]),...service.ipv4])],service.id);
         if(resolved) {
           const date=new Date(resolved.updatedAt).toLocaleString(window.NaitI18n?.locale||'ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-          const meta=node('small','route-source','DNS · '+date+' · '+resolved.sources.join(', '));meta.dataset.noI18n='';addresses.append(meta);
+          const meta=node('small','route-source'),stamp=node('span','','DNS · '+date+' · ');stamp.dataset.noI18n='';meta.append(stamp);
+          resolved.sources.forEach((source,index)=>{if(index)meta.append(document.createTextNode(', '));const label=node('span','',source==='Yandex'?'Яндекс DNS':source);if(source!=='Yandex')label.dataset.noI18n='';meta.append(label);});addresses.append(meta);
         }
         row.append(check,name,addresses);this.body.append(row);
       }
@@ -122,7 +123,7 @@
     }
     async refresh() {
       const token=++this.token,feedback=el(this.prefix+'DnsStatus');this.refreshButton.disabled=true;this.onBusy(true);this.onChange();
-      feedback.textContent=t('Запрашиваем адреса через Cloudflare и Google DNS…');
+      feedback.textContent=t('Запрашиваем адреса через Cloudflare, Google и Яндекс DNS…');
       try {
         const result=await this.request('/api/client-policies/resolve',{services:this.visibleServices().map(service=>service.id)});
         if(token!==this.token)return;

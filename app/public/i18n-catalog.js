@@ -2,6 +2,15 @@
 // Russian source messages are stable gettext-style keys. Do not translate user data.
 (() => {
   const en = {
+"Аптека Столички":"Stolichki Pharmacy",
+"Сети Яндекса":"Yandex networks",
+"Сети электронного правительства":"Electronic-government networks",
+"Яндекс DNS":"Yandex DNS",
+"Запрашиваем адреса через Cloudflare, Google и Яндекс DNS…":"Resolving addresses via Cloudflare, Google and Yandex DNS…",
+"«Обновить IP» запрашивает адреса доменов через Cloudflare, Google и Яндекс DNS и дополняет сети сервисов. Изменения применяются после сохранения. DNS не охватывает все адреса CDN и приложений.":"Update IP resolves domains via Cloudflare, Google and Yandex DNS and supplements service networks. Changes apply after saving. DNS does not cover every CDN and app address.",
+"Сети электронного правительства AS196747 и DNS-адреса портала, ЕСИА, API и ресурсов Госуслуг. Дополнительные узлы приложения могут потребовать ручного добавления.":"Electronic-government AS196747 networks and DNS addresses for the portal, ESIA, APIs and Gosuslugi assets. Additional app hosts may need manual routes.",
+"Собственные сети Яндекса AS13238 и DNS-адреса сервисов, включая Карты и Интернетометр. Другие сервисы в этих сетях также обходят VPN. Yandex Cloud целиком не включён.":"Yandex AS13238 networks and DNS addresses, including Maps and Internetometer. Other services on these networks also bypass the VPN. The entire Yandex Cloud network is not included.",
+"DNS-адреса сайта и API приложения Аптека Столички. Полное покрытие приложения и сторонних ресурсов требует проверки.":"DNS addresses for the Stolichki Pharmacy website and app API. Complete app and third-party coverage requires testing.",
     "Кошелёк ЦУПИС":"CUPIS Wallet",
     "DNS-адреса сайта, кошелька и поддержки ЦУПИС. Дополнительные API мобильного приложения могут потребовать ручного добавления; оплату по СБП проверяйте вместе с профилем «СБП».":"DNS addresses for the CUPIS website, wallet and support. Additional mobile-app APIs may need manual routes; test QR payments together with the SBP profile.",
 "Отметьте «Локальные сети», чтобы оставить их доступными напрямую. Выбранные собственные IP и подсети также обходят VPN.":"Check Local networks to access them directly. Selected custom IP addresses and subnets also bypass the VPN.",
