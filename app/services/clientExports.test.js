@@ -111,22 +111,22 @@ test('client policies preserve ciphertext, key material and server peers across 
   assert.equal(awg.I1,a.client.I1);assert.equal(last.I1,a.client.I1);
   assert.deepEqual(last.allowed_ips,a.server.AllowedIPs.split(', '));
   assert.equal(h.mutations.length,1);assert.equal(h.mutations[0].allowedIp,peer.address);
-  assert.match(await service.getQr(peer.id),/^<svg/);
+  await assert.rejects(service.getQr(peer.id),{code:'client_qr_split_disabled'});
   const {encodeAmneziaChunks}=require('./clientQrService');
   const packed=Buffer.from(vpn.slice(6),'base64url');
   const frames=encodeAmneziaChunks(packed);
   const decoded=Buffer.concat(frames.map(frame=>Buffer.from(frame,'base64url').subarray(8)));
   assert.deepEqual(decoded,packed);
-  assert((await service.getQr(peer.id,'amneziavpn')).frames.length===frames.length);
+  await assert.rejects(service.getQr(peer.id,'amneziavpn'),{code:'client_qr_split_disabled'});
 });
 test('table routes and DNS snapshots survive restart, agree in native and VPN exports, and support personal local bypass',async()=>{
   const h=harness(),peer=await h.service.createPeer({label:'Table routes'});
-  const value={mode:'selected',services:['openai'],bypassLocal:true,
+  const value={mode:'selected',services:['openai'],bypassLocal:true,extras:{openai:['9.9.9.8']},
     resolved:{openai:{ipv4:['9.9.9.9/32'],updatedAt:'2026-10-20T12:00:00Z',sources:['Google','Cloudflare']}},
     custom:[{id:'custom-desk',name:'Custom network',enabled:true,ipv4:['8.8.4.4','192.168.1.0/24']}]};
   await setGlobal(h.service,'routing',value);
   const service=createAwgService(h.env,h.dependencies),saved=(await service.getClientPolicies()).routing;
-  assert.deepEqual(saved.resolved.openai.ipv4,['9.9.9.9/32']);assert.equal(saved.custom[0].name,'Custom network');
+  assert.deepEqual(saved.resolved.openai.ipv4,['9.9.9.9/32']);assert.equal(saved.custom[0].name,'Custom network');assert.deepEqual(saved.extras.openai,['9.9.9.8/32']);
   const conf=parseClientConfig((await service.getClientExport(peer.id)).config,names);
   const vpn=parseClientConfig((await service.getClientExport(peer.id,'amneziavpn')).config,names);
   assert.deepEqual(conf.server,vpn.server);assert(conf.server.AllowedIPs.includes('8.8.4.4/32'));
@@ -139,7 +139,7 @@ test('table routes and DNS snapshots survive restart, agree in native and VPN ex
   const backup=await service.createBackup(),target=harness();
   await target.service.restoreBackup(backup,null,{restoreObfuscation:false});
   const restored=await target.service.getClientPolicies(peer.id);
-  assert.deepEqual(restored.routing.resolved,saved.resolved);assert.deepEqual(restored.routing.custom,saved.custom);
+  assert.deepEqual(restored.routing.resolved,saved.resolved);assert.deepEqual(restored.routing.custom,saved.custom);assert.deepEqual(restored.routing.extras,saved.extras);
   assert.equal(restored.client.routing.value.bypassLocal,true);
 });
 
@@ -208,10 +208,14 @@ test('large selective profiles reject native QR clearly and retain full multipar
   await setGlobal(h.service,'routing',{mode:'selected',services:['youtube','instagram','telegram']});
   await setGlobal(h.service,'obfuscation',generateSignature('quic'));
   const config=(await h.service.getClientExport(peer.id)).config;
-  await assert.rejects(h.service.getQr(peer.id),{code:'client_qr_too_large'});
-  const series=await h.service.getQr(peer.id,'amneziavpn');assert(series.frames.length>1);
+  await assert.rejects(h.service.getQr(peer.id),{code:'client_qr_split_disabled'});
+  await assert.rejects(h.service.getQr(peer.id,'amneziavpn'),{code:'client_qr_split_disabled'});
   const vpn=(await h.service.getClientExport(peer.id,'amneziavpn')).config;
   assert.equal(parseClientConfig(vpn,names).server.AllowedIPs,parseClientConfig(config,names).server.AllowedIPs);
+  await setGlobal(h.service,'routing',{mode:'all',services:[]});
+  await setGlobal(h.service,'obfuscation',generateSignature('dns'));
+  assert.match(await h.service.getQr(peer.id),/^<svg/);
+  assert((await h.service.getQr(peer.id,'amneziavpn')).frames.length>0);
 });
 test('old snapshots without a policy table restore with destination defaults',async()=>{
   const source=harness();await source.service.createPeer({label:'Old backup'});
@@ -482,4 +486,19 @@ test('advanced editor rejects a stale general profile and manual packets become 
   await h.service.setObfuscation({parameters:next,expectedRevision:state.revision,confirmed:true});
   const saved=(await h.service.getClientPolicies()).obfuscation;
   assert.equal(saved.profile,'custom');assert.deepEqual(saved.packets,{I1:'<r 40>',I2:'<r 20>'});
+});
+
+test('QR eligibility follows personal routing and allows full-mode LAN bypass',async()=>{
+ const h=harness(),peer=await h.service.createPeer({label:'QR eligibility'});
+ await setGlobal(h.service,'obfuscation',generateSignature('none'));
+ assert.match(await h.service.getQr(peer.id),/^<svg/);
+ await setGlobal(h.service,'routing',{mode:'selected',services:['telegram']});
+ for(const format of ['amneziawg','amneziavpn'])await assert.rejects(h.service.getQr(peer.id,format),{code:'client_qr_split_disabled'});
+ await setPersonal(h.service,peer.id,{routing:{mode:'override',value:{mode:'all',services:[],bypassLocal:true}}});
+ assert((await h.service.getQr(peer.id,'amneziavpn')).frames.length);
+ await setPersonal(h.service,peer.id,{routing:{mode:'preserve'}});
+ assert.match(await h.service.getQr(peer.id),/^<svg/);
+ await setPersonal(h.service,peer.id,{routing:{mode:'override',value:{mode:'selected',services:['telegram']}}});
+ await setGlobal(h.service,'routing',{mode:'all',services:[]});
+ await assert.rejects(h.service.getQr(peer.id),{code:'client_qr_split_disabled'});
 });

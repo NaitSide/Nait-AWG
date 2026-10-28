@@ -1152,11 +1152,14 @@ function createAwgService(env = process.env, dependencies = {}) {
 
   async function getQr(fingerprint, format = 'amneziawg') {
     if (!['amneziawg','amneziavpn'].includes(format)) throw createHttpError(400,'unsupported_client_format','Неподдерживаемый формат подключения.');
+    const { config } = await getConfig(fingerprint);
+    const routing=policyRules.selected(clientStore.policies(),fingerprint,'routing');
+    const importedSelective=!routing && !parseClientConfig(config,PARAMETER_NAMES).server.AllowedIPs.split(/,\s*/).includes('0.0.0.0/0');
+    if(routing?.mode==='selected'||importedSelective)throw createHttpError(409,'client_qr_split_disabled','QR-код недоступен при раздельном туннелировании. Используйте файл конфигурации.');
     if (format === 'amneziavpn') {
       const {config}=await getClientExport(fingerprint,format);
       return buildAmneziaQrSeries(config);
     }
-    const { config } = await getConfig(fingerprint);
     try { QRCode.create(config, {errorCorrectionLevel:'M'}); }
     catch { throw createHttpError(400,'client_qr_too_large','Конфиг слишком велик для QR AmneziaWG. Скачайте .conf или используйте составной QR AmneziaVPN.'); }
     return QRCode.toString(config, { type: 'svg', width: 512, margin: 1, errorCorrectionLevel: 'M' });

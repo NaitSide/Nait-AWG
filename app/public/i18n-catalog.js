@@ -2,6 +2,18 @@
 // Russian source messages are stable gettext-style keys. Do not translate user data.
 (() => {
   const en = {
+    "Чтобы применить изменения на устройстве, скачай и импортируй новый конфиг.":"To apply changes on your device, download and import a new config.",
+    "Настройки сохранены. Скачайте конфиг заново.":"Settings saved. Download the config again.",
+    "Экспериментальный режим — часть сервисов может работать нестабильно.":"Experimental mode — some services may work unreliably.",
+    "Через VPN проходят только IP-адреса из выбранных списков.":"Only IP addresses in the selected lists use the VPN.",
+    "Кнопка «Обновить IP» находит адреса известных доменов через DNS, но приложения могут использовать дополнительные IP-адреса.":"Update IP resolves known domains through DNS, but apps may use additional IP addresses.",
+    "IP-адреса, которых нет в списке, идут напрямую без VPN. Из-за этого сервис может открываться частично или не работать.":"IP addresses missing from the list connect directly without VPN. As a result, a service may load partially or fail to work.",
+    "QR-код недоступен при раздельном туннелировании. Используйте файл конфигурации.":"QR codes are unavailable with split tunneling. Use a configuration file.",
+    "＋ Добавить IP":"＋ Add IP",
+    "Добавлено вручную":"Added manually",
+    "Дополнительные IPv4-адреса и подсети":"Additional IPv4 addresses and subnets",
+    "Удалить ручные адреса":"Remove manual addresses",
+    "В выборочном режиме IPv6 идёт через обычное подключение. QR-коды недоступны — используйте файл конфигурации.":"In selective mode IPv6 uses the regular connection. QR codes are unavailable — use a configuration file.",
     "Сети Meta целиком: через VPN пойдут также Facebook и Instagram. DNS дополняет адреса WhatsApp. Звонки и внешние CDN могут использовать другие адреса.": "All Meta networks: Facebook and Instagram also use the VPN. DNS adds WhatsApp addresses. Calls and external CDNs may use other addresses.",
     "Нажмите «Обновить IP», чтобы получить адреса сайта, API и части CDN TikTok. Полное покрытие видео и региональных серверов не гарантируется.": "Click Update IP to resolve the TikTok website, API and selected CDN domains. Complete coverage of video and regional servers is not guaranteed.",
     "DNS-адреса сайта, Gateway и медиа Discord. Голосовые каналы используют динамические серверы и могут потребовать дополнительных маршрутов.": "DNS addresses for the Discord website, Gateway and media. Voice channels use dynamic servers and may need additional routes.",

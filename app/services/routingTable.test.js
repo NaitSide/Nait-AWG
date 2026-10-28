@@ -38,3 +38,10 @@ test('invalid custom rows cannot become default routes or inject config directiv
     assert.throws(()=>freezeRouting({mode:'selected',services:[],custom:[{...custom,...patch}]}));
   }
 });
+
+test('per-service manual routes enable DNS-only services and remain isolated across storage and selection',()=>{
+ const value={mode:'selected',services:['openai'],extras:{openai:['9.9.9.9','9.9.9.9/32','10.1.0.0/16'],anthropic:['8.8.4.4']},bypassLocal:true};
+ const saved=freezeRouting(value);assert.deepEqual(saved.ipv4,['9.9.9.9/32','10.1.0.0/16']);assert.deepEqual(storedRouting(saved),saved);
+ const routes=routesFor(saved,'1.1.1.1');assert(contains(routes,'9.9.9.9'));assert(!contains(routes,'8.8.4.4'));assert(!contains(routes,'10.1.0.1'));
+ for(const extras of [{unknown:['8.8.8.8']},{openai:['0.0.0.0/0']},{openai:['8.8.8.1/24']},{openai:['::1']},{openai:['1.1.1.1\nBad=1']}])assert.throws(()=>freezeRouting({...value,extras}));
+});

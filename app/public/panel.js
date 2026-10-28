@@ -951,7 +951,7 @@ async function selectQrFormat(format) {
   qrObjectUrl = null;
   copy.disabled = true;
   link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');
-  status.hidden = false;
+  status.hidden = false;status.classList.remove('qr-policy-notice');
   const multipart = format === 'vpn';
   document.getElementById('qrModal').setAttribute('data-qr-format', format);
   document.getElementById('qrActions').hidden = false;
@@ -962,7 +962,15 @@ async function selectQrFormat(format) {
   link.download = 'Nait-AWG-' + peer.id.slice(0, 12) + '-QR.svg';
   try {
     const response = await fetch(peer.qrUrl+(multipart?'?format=amneziavpn':''),{cache:'no-store'});
-    if (!response.ok) throw new Error('Не удалось загрузить QR-код.');
+    if (!response.ok) {
+      const failure=await response.json().catch(()=>({}));
+      if(requestId!==qrRequestId)return;
+      if(failure.code==='client_qr_split_disabled'){
+        status.classList.add('qr-policy-notice');status.textContent='QR-код недоступен при раздельном туннелировании. Используйте файл конфигурации.';
+        document.getElementById('qrActions').hidden=true;return;
+      }
+      throw new Error(failure.message||'Не удалось загрузить QR-код.');
+    }
     if(multipart){
       const series=await response.json();
       if(requestId!==qrRequestId)return;

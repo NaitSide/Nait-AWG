@@ -81,16 +81,23 @@ function resolvedServices(value = {}) {
     return [id, {ipv4:routes,updatedAt:new Date(item.updatedAt).toISOString(),sources:[...new Set(item.sources)].sort()}];
   }));
 }
+function serviceExtras(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > catalog.services.length) throw invalid('invalid_service_extras');
+  return Object.fromEntries(Object.entries(value).map(([id, ips]) => {
+    if (!catalog.services.some(s => s.id === id) || !Array.isArray(ips) || !ips.length) throw invalid('invalid_service_extras');
+    return [id, customRows([{id:'custom-extra',name:id,enabled:true,ipv4:ips}])[0].ipv4];
+  }));
+}
 function validateRouting(value, allowUnavailable = false) {
   if (!value || !['all','selected'].includes(value.mode) || !Array.isArray(value.services)
       || value.services.length > catalog.services.length) throw invalid('invalid_routing_policy');
   const ids = [...new Set(value.services)].sort();
-  const custom = customRows(value.custom), resolved = resolvedServices(value.resolved);
+  const custom = customRows(value.custom), resolved = resolvedServices(value.resolved), extras = serviceExtras(value.extras);
   if (value.bypassLocal !== undefined && typeof value.bypassLocal !== 'boolean') throw invalid();
-  if (ids.some(id => !catalog.services.some(service => service.id === id && (allowUnavailable || service.available || resolved[id]?.ipv4.length)))
+  if (ids.some(id => !catalog.services.some(service => service.id === id && (allowUnavailable || service.available || resolved[id]?.ipv4.length || extras[id]?.length)))
       || (value.mode === 'selected' && !ids.length && !custom.some(row => row.enabled))) throw invalid('empty_or_unavailable_services');
   return {mode:value.mode,services:value.mode === 'all' ? [] : ids,
-    ...(value.custom !== undefined ? {custom} : {}), ...(value.resolved !== undefined ? {resolved} : {}),
+    ...(value.extras !== undefined ? {extras} : {}), ...(value.custom !== undefined ? {custom} : {}), ...(value.resolved !== undefined ? {resolved} : {}),
     ...(value.bypassLocal !== undefined ? {bypassLocal:value.bypassLocal} : {})};
 }
 function addressText(number) { return [24,16,8,0].map(shift => Math.floor(number / 2 ** shift) % 256).join('.'); }
@@ -144,7 +151,7 @@ function routesFor(value, dns, endpoint) {
 function freezeRouting(value) {
   const policy = validateRouting(value);
   return {...policy, catalogDate: catalog.date, ipv4: policy.mode === 'selected'
-    ? union([...policy.services.flatMap(id => [...catalog.services.find(service => service.id === id).ipv4,...(policy.resolved?.[id]?.ipv4 || [])]),
+    ? union([...policy.services.flatMap(id => [...catalog.services.find(service => service.id === id).ipv4,...(policy.resolved?.[id]?.ipv4 || []),...(policy.extras?.[id] || [])]),
       ...(policy.custom || []).filter(row=>row.enabled).flatMap(row=>row.ipv4)]) : []};
 }
 function storedRouting(value) {
@@ -153,7 +160,7 @@ function storedRouting(value) {
   if (!Number.isFinite(Date.parse(value.catalogDate)) || new Date(value.catalogDate).toISOString().slice(0,10) !== value.catalogDate) throw invalid();
   const routes = union(value.ipv4);
   if ((policy.mode === 'selected' && !routes.length) || (policy.mode === 'all' && routes.length)) throw invalid();
-  const manual=(policy.custom || []).filter(row=>row.enabled).flatMap(row=>row.ipv4).map(cidr);
+  const manual=[...(policy.custom || []).filter(row=>row.enabled).flatMap(row=>row.ipv4),...policy.services.flatMap(id=>policy.extras?.[id] || [])].map(cidr);
   for(const route of routes.map(cidr)) {
     if(manual.some(block=>block.start<=route.start&&block.end>=route.end))continue;
     if(route.prefix<8 || PRIVATE_BLOCKS.some(block=>block.start<=route.end&&block.end>=route.start))throw invalid();

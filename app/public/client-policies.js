@@ -114,7 +114,7 @@
         busy.add(prefix);controls(prefix,true);
         const result = await request('/api/client-policies',{expectedRevision:globalState.revision,type,value});
         globalState.revision = result.revision;globalState[type] = result.value || value;
-        fillGlobal(type);status(prefix,'Настройки сохранены. Скачайте конфиги или QR заново.');
+        fillGlobal(type);status(prefix,'Настройки сохранены. Скачайте конфиг заново.');
       } catch(error) {status(prefix,error.message);}
       finally {busy.delete(prefix);controls(prefix);}
     });
@@ -165,7 +165,7 @@
       const result = await request('/api/peers/'+encodeURIComponent(clientId)+'/policies',input,'PUT');
       clientState.revision=result.revision;
       if(globalState)globalState.revision=result.revision;
-      dirty.delete('clientMask');dirty.delete('clientRoute');status('clientPolicy','Настройки сохранены. Скачайте конфиги или QR заново.');
+      dirty.delete('clientMask');dirty.delete('clientRoute');status('clientPolicy','Настройки сохранены. Скачайте конфиг заново.');
     } catch(error) {status('clientPolicy',error.message);}
     finally {busy.delete('clientPolicy');controls('clientPolicy');el('clientPolicyModal').dataset.busy='false';}
   });
