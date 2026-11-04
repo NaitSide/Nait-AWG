@@ -182,3 +182,8 @@ th.sortable.sorted.asc .sort-asc,th.sortable.sorted.desc .sort-desc{display:bloc
 .route-controls{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px 16px;min-width:0}.route-controls>.field{flex:1 1 240px;max-width:440px}.route-controls .route-refresh{min-height:42px;margin-left:auto}.route-instruction{min-width:0}.route-instruction .policy-note{margin:0}
 .route-warning{width:fit-content;max-width:100%;box-sizing:border-box;justify-self:start;margin:0}.route-warning[open]{width:100%;justify-self:stretch}.route-warning summary{justify-content:flex-start}.route-warning summary svg{margin-left:auto}
 @media(max-width:650px){.route-controls>.field{flex-basis:100%;max-width:none}.route-controls .route-refresh{padding:9px;font-size:12px}.route-warning summary{font-size:11px;padding:12px;gap:12px}}
+
+/* Top-layer validation messages must not be clipped by cards or dialogs. */
+.floating-validation{position:fixed;inset:auto;margin:0;box-sizing:border-box;transform:none;z-index:2000;width:max-content;max-width:min(420px,calc(100vw - 24px));overflow-wrap:anywhere;font-family:inherit}
+.floating-validation::before{left:var(--hint-arrow-left,50%)}
+.floating-validation.above::before{top:auto;bottom:-6px;transform:translateX(-50%) rotate(225deg)}

@@ -22,13 +22,62 @@ let filteredCount = allRows.length;
 let accessRequestId = 0;
 if (selectedRow) page = Math.floor(allRows.indexOf(selectedRow) / pageSize) + 1;
 
+// Validation hints escape card clipping and stay inside the visible viewport.
+const floatingValidationHints = new Map();
+function positionValidationHints() {
+  const viewport = window.visualViewport;
+  const leftEdge = (viewport?.offsetLeft || 0) + 12;
+  const topEdge = (viewport?.offsetTop || 0) + 12;
+  const rightEdge = leftEdge + (viewport?.width || innerWidth) - 24;
+  const bottomEdge = topEdge + (viewport?.height || innerHeight) - 24;
+  for (const [hint, field] of floatingValidationHints) {
+    const anchor = field.getBoundingClientRect();
+    if (!field.isConnected || !field.getClientRects().length || anchor.bottom < topEdge || anchor.top > bottomEdge) {
+      hideValidationHint(hint); continue;
+    }
+    hint.style.maxWidth = Math.max(1, rightEdge - leftEdge) + 'px';
+    hint.style.maxHeight = Math.max(1, bottomEdge - topEdge) + 'px';
+    const box = hint.getBoundingClientRect();
+    const below = bottomEdge - anchor.bottom - 10;
+    const above = anchor.top - topEdge - 10;
+    const useAbove = box.height > below && above > below;
+    hint.classList.toggle('above', useAbove);
+    const left = Math.max(leftEdge, Math.min(anchor.left + anchor.width / 2 - box.width / 2, rightEdge - box.width));
+    const top = useAbove ? anchor.top - box.height - 10 : anchor.bottom + 10;
+    hint.style.left = left + 'px';
+    hint.style.top = Math.max(topEdge, Math.min(top, bottomEdge - box.height)) + 'px';
+    hint.style.setProperty('--hint-arrow-left', Math.max(12, Math.min(anchor.left + anchor.width / 2 - left, box.width - 12)) + 'px');
+  }
+}
+function showValidationHint(hint, field) {
+  document.body.append(hint);
+  hint.classList.add('floating-validation');
+  if (typeof hint.showPopover === 'function') hint.setAttribute('popover', 'manual');
+  hint.hidden = false;
+  if (typeof hint.showPopover === 'function' && !hint.matches(':popover-open')) hint.showPopover();
+  floatingValidationHints.set(hint, field);
+  positionValidationHints();
+}
+function hideValidationHint(hint) {
+  if (typeof hint.hidePopover === 'function' && hint.matches(':popover-open')) hint.hidePopover();
+  hint.hidden = true;
+  floatingValidationHints.delete(hint);
+}
+window.addEventListener('resize', positionValidationHints);
+document.addEventListener('scroll', positionValidationHints, true);
+window.visualViewport?.addEventListener('resize', positionValidationHints);
+window.visualViewport?.addEventListener('scroll', positionValidationHints);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') for (const hint of floatingValidationHints.keys()) hideValidationHint(hint);
+});
+
 const fieldValidationPopover = document.createElement('span');
 fieldValidationPopover.className = 'field-validation-popover';
 fieldValidationPopover.setAttribute('role', 'alert');
 fieldValidationPopover.hidden = true;
 
 function hideFieldValidation() {
-  fieldValidationPopover.hidden = true;
+  hideValidationHint(fieldValidationPopover);
   fieldValidationPopover.remove();
 }
 
@@ -48,9 +97,8 @@ document.addEventListener('invalid', event => {
   if (!anchor) return;
   hideFieldValidation();
   fieldValidationPopover.textContent = fieldValidationMessage(field);
-  anchor.append(fieldValidationPopover);
-  fieldValidationPopover.hidden = false;
   field.focus();
+  showValidationHint(fieldValidationPopover, field);
 }, true);
 document.addEventListener('input', hideFieldValidation);
 
@@ -1197,7 +1245,8 @@ function adminPasswordIsStrong(password) {
 
 function showAdminPasswordRequirement(show) {
   if (show) hideFieldValidation();
-  adminPasswordRequirement.hidden = !show;
+  if (show) showValidationHint(adminPasswordRequirement, document.getElementById('adminNewPassword'));
+  else hideValidationHint(adminPasswordRequirement);
   document.getElementById('adminNewPassword').setAttribute('aria-invalid', String(show));
 }
 
