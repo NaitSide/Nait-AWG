@@ -2,7 +2,7 @@
 
 <a href="README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="img/lang-ru.svg"><source media="(prefers-color-scheme: light)" srcset="img/lang-ru-light.svg"><img alt="Русский" src="img/lang-ru-light.svg" width="48" height="26"></picture></a> <a href="README.en.md"><picture><source media="(prefers-color-scheme: dark)" srcset="img/lang-en.svg"><source media="(prefers-color-scheme: light)" srcset="img/lang-en-light.svg"><img alt="English" src="img/lang-en-light.svg" width="48" height="26"></picture></a>
 
-**Версия: 0.1.3**
+**Версия: 0.1.4**
 
 Веб-панель для управления своим VPN-сервером AmneziaWG.
 
@@ -114,6 +114,8 @@ QR-код для приложения AmneziaVPN — составной: на с
 ![Только выбранные сервисы через VPN](img/ru/routing-selected.png)
 
 **Всё, кроме выбранных сервисов.** Отмеченные сервисы идут напрямую, остальной трафик — через VPN. Удобно для российских сайтов, банков и оплаты по СБП.
+
+В этом режиме можно дополнительно исключить российские IPv4-сети через **GeoIP**. Список IPdeny обновляется отдельно и применяется после сохранения настроек. [Подробнее и проверка на устройствах](docs/geoip.md).
 
 ![Всё, кроме выбранных сервисов](img/ru/routing-excluded.png)
 

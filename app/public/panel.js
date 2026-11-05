@@ -501,7 +501,7 @@ document.getElementById('clientConfigForm').addEventListener('submit', async eve
   try {
     const file = fileInput.files?.[0];
     if (!file) throw new Error('Выберите исходный файл .conf или гостевой .vpn.');
-    if (file.size > 64 * 1024) throw new Error('Выберите конфиг одного клиента размером до 64 КБ.');
+    if (file.size > 1024 * 1024) throw new Error('Выберите конфиг одного клиента размером до 1 МБ.');
     const config = await file.text();
     if (!config.trim()) throw new Error('Выбранный файл пуст.');
     const response = await fetch('/api/peers/' + encodeURIComponent(row.dataset.peerId) + '/config/import', {

@@ -413,5 +413,25 @@
   "Некорректный каталог или выбор сервисов.": "Invalid service list or selection."
 });
   Object.assign(en,{"Сети Telegram":"Telegram networks","Сети Google":"Google networks","Сети Meta":"Meta networks","DNS-адреса":"DNS addresses","Слишком много DNS-адресов для одного сервиса. Предыдущий список сохранён.":"Too many DNS addresses for one service. The previous list was preserved.","Для раздельного туннелирования нужен числовой IPv4-адрес VPN-сервера.":"Split tunneling requires a numeric IPv4 address for the VPN server."});
+  Object.assign(en,{
+    'GeoIP — исключение российских сетей':'GeoIP — bypass Russian networks',
+    'Исключать российские IP-адреса из VPN':'Bypass VPN for Russian IP addresses',
+    'Обновить GeoIP':'Update GeoIP',
+    'Дополняет выбранные сервисы российскими сетями. Зарубежные адреса российских сервисов можно добавить в таблице.':'Adds Russian networks to the selected services. Foreign addresses used by Russian services can be added in the table.',
+    'IPdeny · IPv4 · Россия':'IPdeny · IPv4 · Russia',
+    'Список ещё не загружен':'The list has not been downloaded yet',
+    'Обновлено':'Updated',
+    'IPv4-подсетей':'IPv4 subnets',
+    'Загружаем и проверяем российские IPv4-сети…':'Downloading and validating Russian IPv4 networks…',
+    'GeoIP обновлён. Сохраните настройки и импортируйте новый конфиг.':'GeoIP updated. Save settings and import a new config.',
+    'Дождитесь загрузки GeoIP или отключите исключение российских сетей.':'Wait for GeoIP to download or disable Russian network exclusions.',
+    'Список GeoIP не прошёл проверку. Предыдущие данные сохранены.':'GeoIP validation failed. Previous data was preserved.',
+    'Не удалось обновить GeoIP. Предыдущие данные сохранены.':'Could not update GeoIP. Previous data was preserved.',
+    'Список GeoIP сильно изменился и не был применён. Предыдущие данные сохранены.':'The GeoIP list changed significantly and was not applied. Previous data was preserved.',
+    'Повторить обновление GeoIP можно через минуту.':'You can update GeoIP again in one minute.',
+    'Загрузите GeoIP заново: выбранная версия списка недоступна.':'Download GeoIP again: the selected list version is unavailable.',
+    'GeoIP доступен только в режиме «Всё, кроме выбранных сервисов».':'GeoIP is only available in “Everything except selected services” mode.',
+    'Выберите конфиг одного клиента размером до 1 МБ.':'Choose a single-client config up to 1 MB.'
+  });
   window.NaitTranslations = Object.freeze({ru:Object.freeze(Object.fromEntries(Object.keys(en).map(key=>[key,key]))),en:Object.freeze(en)});
 })();

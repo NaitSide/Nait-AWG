@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { inflateSync } = require('node:zlib');
 
-const MAX_CONFIG_BYTES = 64 * 1024;
+const {MAX_CONFIG_BYTES, MAX_GUEST_BYTES, MAX_ENCODED_BYTES} = require('./clientConfigLimits');
 const KEY_PATTERN = /^[A-Za-z0-9+/]{43}=$/;
 
 function invalid(code, message) {
@@ -12,7 +12,7 @@ function invalid(code, message) {
 
 function extractNativeConfig(input) {
   if (typeof input !== 'string' || Buffer.byteLength(input) > MAX_CONFIG_BYTES) {
-    throw invalid('invalid_client_config', 'Выберите конфиг одного клиента размером до 64 КБ.');
+    throw invalid('invalid_client_config', 'Выберите конфиг одного клиента размером до 1 МБ.');
   }
   const text = input.replace(/^\uFEFF/, '').trim();
   if (!text.startsWith('vpn://')) return {text};
@@ -20,8 +20,8 @@ function extractNativeConfig(input) {
     const encoded = text.slice(6);
     if (!/^[A-Za-z0-9_+/-]+={0,2}$/.test(encoded)) throw new Error();
     const compressed = Buffer.from(encoded, 'base64url');
-    if (compressed.length < 5 || compressed.readUInt32BE(0) > 256 * 1024) throw new Error();
-    const decoded = inflateSync(compressed.subarray(4), { maxOutputLength: 256 * 1024 });
+    if (Buffer.byteLength(input)>MAX_ENCODED_BYTES || compressed.length < 5 || compressed.readUInt32BE(0) > MAX_GUEST_BYTES) throw new Error();
+    const decoded = inflateSync(compressed.subarray(4), { maxOutputLength: MAX_GUEST_BYTES });
     if (decoded.length !== compressed.readUInt32BE(0)) throw new Error();
     const guest = JSON.parse(decoded.toString('utf8'));
     // Accept a single guest connection, never an app backup or SSH credentials.

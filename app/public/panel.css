@@ -187,3 +187,10 @@ th.sortable.sorted.asc .sort-asc,th.sortable.sorted.desc .sort-desc{display:bloc
 .floating-validation{position:fixed;inset:auto;margin:0;box-sizing:border-box;transform:none;z-index:2000;width:max-content;max-width:min(420px,calc(100vw - 24px));overflow-wrap:anywhere;font-family:inherit}
 .floating-validation::before{left:var(--hint-arrow-left,50%)}
 .floating-validation.above::before{top:auto;bottom:-6px;transform:translateX(-50%) rotate(225deg)}
+
+/* GeoIP supplements the service table and has its own download status. */
+.route-geoip{padding:16px;border:1px solid rgba(123,110,170,.45);border-radius:var(--radius);background:rgba(123,110,170,.07);min-width:0}
+.route-geoip[hidden]{display:none}.route-geoip-main{display:flex;align-items:center;justify-content:space-between;gap:14px}.route-geoip-main>div{min-width:0}.route-geoip-main strong{font-size:13px;display:block;line-height:1.5}.route-geoip-main>.btn{flex-shrink:0;white-space:nowrap}
+.route-geoip-toggle{display:flex;align-items:flex-start;gap:9px;margin:10px 0 0;font-size:12px;line-height:1.6;cursor:pointer}.route-geoip-toggle input{width:16px;height:16px;flex:0 0 16px;margin:2px 0 0;accent-color:var(--teal)}
+.route-geoip .policy-note{margin:12px 0 0}.route-geoip-meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:11px;color:var(--muted);line-height:1.6}.route-geoip-meta a{color:var(--muted);text-underline-offset:3px}.route-geoip .policy-feedback:empty{display:none}.route-geoip .policy-feedback{margin:10px 0 0}
+@media(max-width:650px){.route-geoip{padding:12px}.route-geoip-main{flex-wrap:wrap;align-items:flex-start}.route-geoip-main>.btn{margin-left:25px}.route-geoip-meta{gap:5px 12px}}

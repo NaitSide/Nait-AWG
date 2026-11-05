@@ -7,6 +7,7 @@ data/
 !app/data/
 app/data/*
 !app/data/service-catalog.json
+!app/data/yandex-ipv4.json
 *.db
 *.db-*
 *.sqlite
