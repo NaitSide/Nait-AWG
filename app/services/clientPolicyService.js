@@ -3,6 +3,7 @@ const {PACKET_NAMES, validatePackets, generateSignature} = require('./signatureS
 const {storedRouting, routesFor, checkEndpoint} = require('./routingService');
 const {readProfile, PARAMETER_NAMES, protocolVersion} = require('./clientProfileService');
 const {parseClientConfig, MAX_CONFIG_BYTES} = require('./clientConfigService');
+const {MAX_GUEST_BYTES} = require('./clientConfigLimits');
 function failure(code = 'invalid_client_policy', status = 400) {
   const message = code === 'client_policy_changed' ? 'Настройки изменились. Загрузите их заново перед сохранением.'
     : code === 'client_policy_too_large' ? 'Выбранные настройки создают слишком большой конфиг. Сократите выбор сервисов или пакеты.'
@@ -91,7 +92,7 @@ function effectiveProfile(text, state, id) {
     last.allowed_ips = routes.split(', ');
   }
   awg.last_config = wasString ? JSON.stringify(last) : last;
-  if (Buffer.byteLength(JSON.stringify(guest)) > 256 * 1024) throw failure('client_policy_too_large');
+  if (Buffer.byteLength(JSON.stringify(guest)) > MAX_GUEST_BYTES) throw failure('client_policy_too_large');
   return {...profile, config, guest};
 }
 function migratePolicies(source, target, mappings, restoreObfuscation) {

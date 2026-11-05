@@ -91,6 +91,55 @@ async function setPersonal(service,id,values) {
   const current=await service.getClientPolicies(id);
   return service.setClientPolicies({expectedRevision:current.revision,...values},id);
 }
+test('country-sized GeoIP exports round-trip, freeze across refresh/restart and restore without download cache',async()=>{
+  const {createGeoipService}=require('./geoipService'),{geoipFixture}=require('./fixtures/geoip'),geoipRules=require('./geoipRules');
+  const h=harness(),peer=await h.service.createPeer({label:'GeoIP'});
+  let fixture=geoipFixture(),now=Date.parse('2026-11-05T13:00:00Z');
+  const geoip=createGeoipService({filePath:path.join(path.dirname(h.dataPath),'geoip-ru.json'),now:()=>now,
+    fetch:async url=>new Response(url===geoipRules.SOURCE?fixture.body:fixture.checksums)});
+  const service=createAwgService(h.env,{...h.dependencies,geoip});
+  const downloaded=await service.refreshGeoip(),input={mode:'excluded',services:[],bypassLocal:true,geoip:{enabled:true,hash:downloaded.hash}};
+  assert.equal(downloaded.ipv4,undefined);
+  const saved=await setGlobal(service,'routing',input);assert.equal(saved.value.geoip.ipv4,undefined);
+  const first=(await service.getClientExport(peer.id)).config;
+  now+=61000;const checkedAgain=await service.refreshGeoip();assert.equal(checkedAgain.hash,downloaded.hash);
+  assert.equal((await setGlobal(service,'routing',input)).value.geoip.updatedAt,checkedAgain.updatedAt);
+  assert.equal((await service.getClientExport(peer.id)).config,first);
+  assert(Buffer.byteLength(first)>64*1024);assert(Buffer.byteLength(first)<1024*1024);
+  const parsed=parseClientConfig(first,names),vpn=(await service.getClientExport(peer.id,'amneziavpn')).config;
+  assert.equal(parseClientConfig(vpn,names).server.AllowedIPs,parsed.server.AllowedIPs);
+  for(const format of [undefined,'amneziavpn'])await assert.rejects(service.getQr(peer.id,format),{code:'client_qr_split_disabled'});
+  const state=await service.getClientPolicies();assert.equal(state.routing.geoip.ipv4,undefined);assert(Buffer.byteLength(JSON.stringify(state))<32*1024);
+  const db=new DatabaseSync(h.dataPath);const before=db.prepare('SELECT encrypted_config FROM clients').get().encrypted_config;db.close();
+  fixture=geoipFixture(true);now+=61000;const newer=await service.refreshGeoip();assert.notEqual(newer.hash,downloaded.hash);
+  const restarted=createAwgService(h.env,h.dependencies);
+  assert.equal((await restarted.getClientExport(peer.id)).config,first);
+  await setPersonal(restarted,peer.id,{routing:{mode:'override',value:{...input,geoip:{enabled:true,hash:newer.hash}}}});
+  const personal=(await restarted.getClientPolicies(peer.id)).client.routing.value;
+  assert.equal(personal.geoip.hash,newer.hash);assert.equal(personal.geoip.ipv4,undefined);
+  assert.notEqual((await restarted.getClientExport(peer.id)).config,first);
+  await setPersonal(restarted,peer.id,{routing:{mode:'inherit'}});
+  assert.equal((await restarted.getClientExport(peer.id)).config,first);
+  // Saving another choice retains the selected frozen source rather than silently adopting the newest cache.
+  await setGlobal(restarted,'routing',{...input,bypassLocal:false});
+  assert.equal((await restarted.getClientPolicies()).routing.geoip.hash,downloaded.hash);
+  await setGlobal(restarted,'routing',input);
+  const backup=await restarted.createBackup();
+  const target=harness(),restored=createAwgService(target.env,target.dependencies);
+  await restored.restoreBackup(backup,null,{restoreObfuscation:false});
+  assert.equal((await restored.getClientPolicies()).routing.geoip.hash,downloaded.hash);
+  const restoredExport=(await restored.getClientExport(peer.id)).config;
+  assert.equal(parseClientConfig(restoredExport,names).server.AllowedIPs,parsed.server.AllowedIPs);
+  await setGlobal(restored,'routing',input); // Restored policy is usable even without a cache file.
+  await setPersonal(restored,peer.id,{routing:{mode:'override',value:{...input,geoip:{enabled:false}}}});
+  assert.equal((await restored.getClientPolicies(peer.id)).client.routing.value.geoip.enabled,false);
+  await setGlobal(restarted,'routing',{...input,geoip:{enabled:false}});
+  const disabled=parseClientConfig((await restarted.getClientExport(peer.id)).config,names);
+  assert(Buffer.byteLength(disabled.server.AllowedIPs)<4096);
+  const check=new DatabaseSync(h.dataPath);assert.equal(check.prepare('SELECT encrypted_config FROM clients').get().encrypted_config,before);check.close();
+  assert.equal(h.mutations.length,1);
+});
+
 test('client policies preserve ciphertext, key material and server peers across restart and all export representations',async()=>{
   const h=harness(),peer=await h.service.createPeer({label:'Policy test'});
   const db=new DatabaseSync(h.dataPath),before=db.prepare('SELECT encrypted_config FROM clients').get().encrypted_config;

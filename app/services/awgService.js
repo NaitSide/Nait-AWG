@@ -18,6 +18,9 @@ const { createObfuscationService } = require('./obfuscationService');
 const obfuscationRules = require('./obfuscationRules');
 const policyRules = require('./clientPolicyService');
 const routingRules = require('./routingService');
+const {createGeoipService} = require('./geoipService');
+const geoipRules = require('./geoipRules');
+const {MAX_ENCODED_BYTES} = require('./clientConfigLimits');
 
 const execFileAsync = promisify(execFile);
 
@@ -568,6 +571,7 @@ function createAwgService(env = process.env, dependencies = {}) {
   const dataKey = base64Key(env.NAIT_AWG_DATA_KEY, 'NAIT_AWG_DATA_KEY');
   const dataPath = path.resolve(env.NAIT_AWG_DATA_PATH || './data/clients.db');
   const clientStore = createClientStore(dataPath);
+  const geoip = dependencies.geoip || createGeoipService({filePath:path.join(path.dirname(dataPath),'geoip-ru.json')});
   const noteStore = createNoteStore(path.join(path.dirname(dataPath), 'peer-notes.json'));
   const usageStore = createUsageStore(path.join(path.dirname(dataPath), 'traffic-history.json'));
   const endpointHost = String(env.PUBLIC_ENDPOINT_HOST || '').trim();
@@ -1206,8 +1210,10 @@ function createAwgService(env = process.env, dependencies = {}) {
       if (!client.encryptedConfig) continue;
       const effective = policyRules.effectiveProfile(decrypt(client.encryptedConfig,dataKey),state,client.publicKeyFingerprint);
       const vpn = effective.guest ? encodeAmneziaGuest(effective.guest) : buildAmneziaVpn(effective.config,client.label,CLIENT_PARAMETER_ORDER,{legacy:true});
-      if (Buffer.byteLength(vpn) > 64 * 1024) throw policyRules.failure('client_policy_too_large');
-      try { QRCode.create(effective.config,{errorCorrectionLevel:'M'}); } catch { largeQr++; }
+      if (Buffer.byteLength(vpn) > MAX_ENCODED_BYTES) throw policyRules.failure('client_policy_too_large');
+      const routing=policyRules.selected(state,client.publicKeyFingerprint,'routing');
+      if(routing && routing.mode!=='all')largeQr++;
+      else try { QRCode.create(effective.config,{errorCorrectionLevel:'M'}); } catch { largeQr++; }
       affected++;
     }
     return {savedConfigs:affected, largeQr};
@@ -1216,8 +1222,8 @@ function createAwgService(env = process.env, dependencies = {}) {
     return withGateLock(()=>{
       const state = clientStore.policies();
       if (fingerprint && !clientStore.findActive(fingerprint)?.encryptedConfig) throw createHttpError(404,'config_unavailable','Сначала импортируйте исходный конфиг клиента.');
-      return {revision:state.revision, obfuscation:state.obfuscation, routing:state.routing,
-        client:fingerprint ? state.clients[fingerprint] || {} : undefined, catalog:routingRules.catalog};
+      return {revision:state.revision, obfuscation:state.obfuscation, routing:routingRules.publicRouting(state.routing), geoip:geoip.status(),
+        client:fingerprint ? publicClientPolicies(state.clients[fingerprint] || {}) : undefined, catalog:routingRules.catalog};
     });
   }
   async function setClientPolicies(input, fingerprint) {
@@ -1232,21 +1238,39 @@ function createAwgService(env = process.env, dependencies = {}) {
           const value = input[type];
           if (!value || typeof value !== 'object' || Array.isArray(value)) throw policyRules.failure();
           record[type] = policyRules.binding(value.mode === 'override' ? {...value,value:type === 'routing'
-            ? routingRules.freezeRouting(value.value) : value.value} : value,type);
+            ? freezeWithGeoip(value.value,state) : value.value} : value,type);
         }
         next.clients[fingerprint] = record;
       } else {
         if (!['obfuscation','routing'].includes(input.type)) throw policyRules.failure();
-        next[input.type] = input.type === 'routing' ? routingRules.freezeRouting(input.value) : policyRules.masking(input.value);
+        next[input.type] = input.type === 'routing' ? freezeWithGeoip(input.value,state) : policyRules.masking(input.value);
       }
       next.revision++;
       const impact = preflightPolicies(next);
       clientStore.savePolicies(next);
-      return {status:'ok',revision:next.revision,value:fingerprint ? next.clients[fingerprint] : next[input.type],...impact};
+      return {status:'ok',revision:next.revision,value:fingerprint ? publicClientPolicies(next.clients[fingerprint])
+        : input.type==='routing'?routingRules.publicRouting(next.routing):next[input.type],...impact};
     });
   }
 
-  return { getClientPolicies, setClientPolicies, generateSignature:profile=>policyRules.generateSignature(profile), listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
+  function publicClientPolicies(value) {
+    const result=structuredClone(value);
+    if(result.routing?.mode==='override')result.routing.value=routingRules.publicRouting(result.routing.value);
+    return result;
+  }
+  function freezeWithGeoip(value,state) {
+    const reference=geoipRules.reference(value?.geoip);
+    let snapshot;
+    if(reference?.enabled){
+      // Policies carry their complete saved snapshot, including after backup restore without a download cache.
+      const saved=[state.routing,...Object.values(state.clients).map(client=>client.routing?.value)]
+        .find(policy=>policy?.geoip?.enabled && policy.geoip.hash===reference.hash);
+      snapshot=geoip.status()?.hash===reference.hash?geoip.snapshot(reference.hash):saved?.geoip || geoip.snapshot(reference.hash);
+    }
+    return routingRules.freezeRouting(value,snapshot);
+  }
+
+  return { getClientPolicies, setClientPolicies, refreshGeoip:()=>geoip.refresh(), generateSignature:profile=>policyRules.generateSignature(profile), listPeers, createPeer, getConfig, getClientExport, getQr, importClientConfig, deletePeer, updatePeerMetadata, updatePeerNote,
     readPeerAccess, setPeerAccess, createBackup, inspectBackup, restoreBackup,
     getObfuscation:()=>withGateLock(async()=>{
       const state=await obfuscation.current();

@@ -5,7 +5,7 @@
   let globalState = null, clientState = null, clientId = '', clientLoading = 0;
   const prepared = {}, generations = {}, dirty = new Set(), busy = new Set();
   const routeTables=Object.fromEntries(['route','clientRoute'].map(prefix=>[prefix,new window.NaitRoutingTable(prefix,{
-    request,onChange:()=>mark(prefix),onBusy:loading=>{
+    request,onChange:()=>mark(prefix),onGeoip:snapshot=>{if(globalState)globalState.geoip=snapshot;if(clientState)clientState.geoip=snapshot;},onBusy:loading=>{
       if(loading)busy.add(prefix);else busy.delete(prefix);
       for(const form of ['mask','route','clientPolicy'])controls(form,el(form+'Fields').disabled);
     }
@@ -53,7 +53,8 @@
     maskDisplay(prefix);
   }
   function fillRoute(prefix, value) {
-    routeTables[prefix].fill(value,(prefix==='route'?globalState:clientState)?.catalog);
+    const state=prefix==='route'?globalState:clientState;
+    routeTables[prefix].fill(value,state?.catalog,state?.geoip);
   }
   function readRoute(prefix) {
     return routeTables[prefix].read();

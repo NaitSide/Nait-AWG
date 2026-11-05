@@ -2,7 +2,7 @@
 
 <a href="README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="img/lang-ru.svg"><source media="(prefers-color-scheme: light)" srcset="img/lang-ru-light.svg"><img alt="Русский" src="img/lang-ru-light.svg" width="48" height="26"></picture></a> <a href="README.en.md"><picture><source media="(prefers-color-scheme: dark)" srcset="img/lang-en.svg"><source media="(prefers-color-scheme: light)" srcset="img/lang-en-light.svg"><img alt="English" src="img/lang-en-light.svg" width="48" height="26"></picture></a>
 
-**Version: 0.1.3**
+**Version: 0.1.4**
 
 A web panel for managing your own AmneziaWG VPN server.
 
@@ -116,6 +116,8 @@ Route all traffic through the VPN or choose one of two experimental modes.
 ![Selected services only — Russian interface](img/ru/routing-selected.png)
 
 **Everything except selected services.** Selected services connect directly; other traffic uses the VPN. Useful for Russian websites, banking apps and SBP payments.
+
+This mode can also bypass Russian IPv4 networks using **GeoIP**. The IPdeny list is updated separately and applied after saving settings. [Details and device testing (Russian)](docs/geoip.md).
 
 ![Everything except selected services — Russian interface](img/ru/routing-excluded.png)
 
