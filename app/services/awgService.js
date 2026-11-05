@@ -11,7 +11,7 @@ const QRCode = require('qrcode');
 const { decryptBackup, encryptBackup, plainBackup, validatePassphrase } = require('./backupService');
 const { createUsageStore, validState: validUsageState } = require('./usageService');
 const { parseClientConfig } = require('./clientConfigService');
-const { buildAmneziaVpn, createAmneziaGuest, encodeAmneziaGuest } = require('./clientExportService');
+const { buildAmneziaVpn, createAmneziaGuest, encodeAmneziaGuest, compatibleClientExport } = require('./clientExportService');
 const { PARAMETER_NAMES, clientSettings, saveProfile, readProfile, rewriteProfile } = require('./clientProfileService');
 const { buildAmneziaQrSeries } = require('./clientQrService');
 const { createObfuscationService } = require('./obfuscationService');
@@ -1083,7 +1083,7 @@ function createAwgService(env = process.env, dependencies = {}) {
     return withGateLock(async()=>{
       const client = clientStore.findActive(fingerprint);
       if (!client?.encryptedConfig) throw createHttpError(404, 'config_unavailable', 'Configuration was not created by Nait-AWG or has been removed');
-      return { client, ...policyRules.effectiveProfile(decrypt(client.encryptedConfig, dataKey), clientStore.policies(), fingerprint) };
+      return { client, ...compatibleClientExport(policyRules.effectiveProfile(decrypt(client.encryptedConfig, dataKey), clientStore.policies(), fingerprint)) };
     });
   }
 

@@ -32,7 +32,7 @@ function clientSettings(env, parameters) {
   if (!/^\d+$/.test(mtu) || Number(mtu) < 576 || Number(mtu) > 65535) throw policyError('CLIENT_MTU is invalid');
   const version = protocolVersion(parameters);
   const requested = String(env.CLIENT_PERSISTENT_KEEPALIVE ?? 'auto').trim();
-  const keepalive = !requested || requested === 'auto' ? (version === '3.1' ? '25-35' : '25') : requested;
+  const keepalive = !requested || requested === 'auto' ? '25' : requested;
   const range = /^(\d+)(?:-(\d+))?$/.exec(keepalive);
   if (!range || Number(range[1]) > 65535 || (range[2] !== undefined
       && (version !== '3.1' || Number(range[2]) > 65535 || Number(range[2]) < Number(range[1])))) {

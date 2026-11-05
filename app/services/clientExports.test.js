@@ -257,7 +257,7 @@ test('new native export matches independently sourced official .conf fields and 
   const exported=await service.getClientExport(created.id);
   const parsed=parseClientConfig(exported.config,names);
   assert.deepEqual({...parsed.client},{...native.client,Address:'10.42.7.2/32'});
-  assert.deepEqual({...parsed.server},{...native.server});
+  assert.deepEqual({...parsed.server},{...native.server,PersistentKeepalive:'25'});
   assert.equal(mutations.length,1); assert.equal(mutations[0].persistentKeepalive,0);
   const vpn=unpack((await service.getClientExport(created.id,'amneziavpn')).config);
   assert.equal(vpn.description,'Android TV'); assert.equal(vpn.containers[0].awg.subnet_address,'10.42.7.0');
@@ -265,7 +265,7 @@ test('new native export matches independently sourced official .conf fields and 
 });
 
 test('official desktop and mobile MTU policies, explicit overrides and custom DNS are separate from server data',()=>{
-  assert.deepEqual(clientSettings({},parameters),{dns:'1.1.1.1, 1.0.0.1',allowedIps:'0.0.0.0/0, ::/0',keepalive:'25-35',mtu:'1376'});
+  assert.deepEqual(clientSettings({},parameters),{dns:'1.1.1.1, 1.0.0.1',allowedIps:'0.0.0.0/0, ::/0',keepalive:'25',mtu:'1376'});
   assert.equal(clientSettings({CLIENT_EXPORT_PLATFORM:'mobile'},parameters).mtu,'1280');
   const settings=clientSettings({CLIENT_MTU:'1420',CLIENT_DNS:'9.9.9.9, 149.112.112.112',CLIENT_PERSISTENT_KEEPALIVE:'20-40'},parameters);
   assert.equal(settings.mtu,'1420');assert.equal(settings.keepalive,'20-40');assert.equal(settings.dns,'9.9.9.9, 149.112.112.112');
@@ -274,7 +274,7 @@ test('official desktop and mobile MTU policies, explicit overrides and custom DN
 
 test('AWG 1.x, 1.5, 2 and 3.1 select only applicable version and keepalive fields',()=>{
   const base={Jc:'5',Jmin:'10',Jmax:'50',S1:'1',S2:'2',H1:'1',H2:'2',H3:'3',H4:'4'};
-  for(const [params,version,keepalive] of [[base,'','25'],[{...base,I1:'<b 0x01>'},'1.5','25'],[{...base,S3:'0',S4:'0'},'2','25'],[{...base,H1:'1-2'},'2','25'],[{...base,RekeyTimeout:'3-7'},'3.1','25-35']]){
+  for(const [params,version,keepalive] of [[base,'','25'],[{...base,I1:'<b 0x01>'},'1.5','25'],[{...base,S3:'0',S4:'0'},'2','25'],[{...base,H1:'1-2'},'2','25'],[{...base,RekeyTimeout:'3-7'},'3.1','25']]){
     assert.equal(protocolVersion(params),version);assert.equal(clientSettings({},params).keepalive,keepalive);
   }
   assert.equal(protocolVersion({...base,RandomTrailers:'off',DisableCookies:'off'}),'');
@@ -335,22 +335,23 @@ test('import and re-export through SQLite retain the official guest profile afte
   const restarted=createAwgService(h.env,h.dependencies);
   const guest=unpack((await restarted.getClientExport(id,'amneziavpn')).config);
   const expected=structuredClone(official);expected.description='iPhone';
+  const expectedLast=JSON.parse(expected.containers[0].awg.last_config);expectedLast.persistent_keep_alive='25';expectedLast.config=expectedLast.config.replace('25-35','25');expected.containers[0].awg.last_config=JSON.stringify(expectedLast);
   assert.deepEqual(semantic(guest),semantic(expected));
   const nativeExport=await restarted.getClientExport(id);
-  assert.equal(nativeExport.config,parsed.config);
+  assert.equal(nativeExport.config,parsed.config.replace('25-35','25'));
   const after=new DatabaseSync(h.dataPath);assert.equal(after.prepare('SELECT encrypted_config FROM clients').get().encrypted_config,before);after.close();
   assert.equal(h.mutations.length,0);
 });
 
-test('native import preserves explicit MTU and keepalive when generating a guest',async()=>{
+test('native import preserves MTU but exports a compatible keepalive without rewriting storage',async()=>{
   const config=officialConf.replace('DNS =','MTU = 1412\nDNS =').replace('25-35','31-39');
   const parsed=parseClientConfig(config,names);
   const h=harness({},[{publicKey:parsed.publicKey,psk:parsed.server.PresharedKey,allowedIps:[parsed.client.Address],clientName:'PC'}]);
   const id=fingerprint(parsed.publicKey);await h.service.importClientConfig(id,{config});
   const guest=unpack((await h.service.getClientExport(id,'amneziavpn')).config);
   const last=JSON.parse(guest.containers[0].awg.last_config);
-  assert.equal(last.mtu,'1412');assert.equal(last.persistent_keep_alive,'31-39');assert.match(last.config,/MTU = 1412/);
-  assert.equal((await h.service.getClientExport(id)).config,parsed.config);
+  assert.equal(last.mtu,'1412');assert.equal(last.persistent_keep_alive,'25');assert.match(last.config,/MTU = 1412/);
+  assert.equal((await h.service.getClientExport(id)).config,parsed.config.replace('31-39','25'));
 });
 
 test('older stored profiles retain exact native bytes, guest semantics and encrypted database values',async()=>{
@@ -518,4 +519,30 @@ test('excluded mode persists across restart and backup, exports both formats, an
  assert.deepEqual((await target.service.getClientPolicies()).routing,state.routing);
  await setPersonal(service,peer.id,{routing:{mode:'override',value:{mode:'all',services:[]}},obfuscation:{mode:'override',value:generateSignature('none')}});
  assert((await service.getQr(peer.id,'amneziavpn')).frames.length);
+});
+test('saved ranged keepalive is normalized for repeated downloads and both QR formats without storage or server changes',async()=>{
+  const parsed=parseClientConfig(encodeAmneziaGuest(official),names),id=fingerprint(parsed.publicKey);
+  const h=harness({},[{publicKey:parsed.publicKey,psk:parsed.server.PresharedKey,allowedIps:[parsed.client.Address],clientName:'Compatibility'}]);
+  await h.service.importClientConfig(id,{config:encodeAmneziaGuest(official)});
+  const db=new DatabaseSync(h.dataPath),cipher=db.prepare('SELECT encrypted_config FROM clients').get().encrypted_config;
+  const QRCode=require('qrcode'),originalToString=QRCode.toString,originalCreate=QRCode.create,qrInputs=[];
+  QRCode.create=()=>({});QRCode.toString=async text=>{qrInputs.push(text);return '<svg/>';};
+  try {
+    for(let i=0;i<2;i++) {
+      const service=createAwgService(h.env,h.dependencies);
+      const conf=(await service.getClientExport(id)).config;
+      assert.equal(parseClientConfig(conf,names).server.PersistentKeepalive,'25');
+      assert.equal(conf,parsed.config.replace('25-35','25'));
+      const vpn=(await service.getClientExport(id,'amneziavpn')).config;
+      assert.equal(parseClientConfig(vpn,names).server.PersistentKeepalive,'25');
+      assert.equal(JSON.parse(unpack(vpn).containers[0].awg.last_config).persistent_keep_alive,'25');
+      await service.getQr(id);assert.equal(qrInputs.pop(),conf);
+      await service.getQr(id,'amneziavpn');
+      const payload=Buffer.concat(qrInputs.splice(0).map(frame=>Buffer.from(frame,'base64url').subarray(8)));
+      const qrGuest=JSON.parse(inflateSync(payload.subarray(4)));
+      assert.equal(JSON.parse(qrGuest.containers[0].awg.last_config).persistent_keep_alive,'25');
+      assert.equal(db.prepare('SELECT encrypted_config FROM clients').get().encrypted_config,cipher);
+    }
+    assert.equal(h.mutations.length,0);
+  } finally {QRCode.toString=originalToString;QRCode.create=originalCreate;db.close();}
 });

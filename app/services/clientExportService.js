@@ -3,6 +3,27 @@ const { deflateSync } = require('node:zlib');
 const { parseClientConfig } = require('./clientConfigService');
 const { protocolVersion } = require('./clientProfileService');
 
+// Compatibility is applied to an export copy, never to stored profiles or server settings.
+function clientKeepaliveConfig(config) {
+  const field = /^([ \t]*PersistentKeepalive[ \t]*=[ \t]*)[^\r\n]*/m;
+  if (field.test(config)) return config.replace(field, (_, prefix) => prefix + '25');
+  return config.replace(/^(\[Peer\][ \t]*)(\r?\n|$)/m, (_, header, newline) =>
+    header + (newline || '\n') + 'PersistentKeepalive = 25' + (newline || '\n'));
+}
+function compatibleClientExport(profile) {
+  const result = {...profile, config: clientKeepaliveConfig(profile.config)};
+  if (profile.guest) {
+    result.guest = structuredClone(profile.guest);
+    const awg = result.guest.containers[0].awg;
+    const isString = typeof awg.last_config === 'string';
+    const last = isString ? JSON.parse(awg.last_config) : awg.last_config;
+    last.config = clientKeepaliveConfig(last.config);
+    last.persistent_keep_alive = '25';
+    awg.last_config = isString ? JSON.stringify(last) : last;
+  }
+  return result;
+}
+
 // Guest AmneziaVPN export: Qt qCompress = big-endian uncompressed length + zlib.
 // Uses only the saved client profile, never server SSH credentials or other clients.
 function createAmneziaGuest(config, label, parameterNames, options = {}) {
@@ -55,4 +76,4 @@ function encodeAmneziaGuest(guest, label = guest.description) {
 function buildAmneziaVpn(config, label, parameterNames, options = {}) {
   return encodeAmneziaGuest(createAmneziaGuest(config, label, parameterNames, options));
 }
-module.exports = { buildAmneziaVpn, createAmneziaGuest, encodeAmneziaGuest };
+module.exports = { buildAmneziaVpn, createAmneziaGuest, encodeAmneziaGuest, compatibleClientExport };
