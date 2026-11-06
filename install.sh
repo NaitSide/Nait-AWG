@@ -473,8 +473,19 @@ if [[ "${1:-}" == update ]]; then
   update_active=false
   rm -rf -- "$update_backup"
   update_backup=''
+  # Data migration runs after the code update commits; never roll back only code
+  # after the existing obfuscation journal has applied a server/profile change.
+  note "$(installer_text 'Проверяем исправление скорости для нод, установленных пунктом 2...' 'Checking the speed fix for nodes installed with option 2...')"
+  systemctl stop "$PANEL_UNIT"
+  padding_status=0
+  padding_result="$(runuser -u nait-awg -- env "NAIT_AWG_PRESERVE_PADDING=${NAIT_AWG_PRESERVE_PADDING:-0}" "$node" "$INSTALL_DIR/app/services/paddingMigration.js" "$INSTALL_DIR")" || padding_status=$?
+  systemctl start "$PANEL_UNIT"
+  [[ "$padding_status" -eq 0 ]] || fail "$(installer_text 'Панель обновлена, но исправление скорости не завершено. Проверьте панель перед выдачей конфигов; повторное обновление безопасно.' 'The panel was updated, but the speed fix did not complete. Check the panel before distributing configs; the update can be retried safely.')"
+  if [[ "$padding_result" == *'"status":"applied"'* ]]; then
+    note "$(installer_text 'Исправление скорости применено. Скачайте новые конфиги и импортируйте их на устройствах.' 'The speed fix was applied. Download new configs and import them on your devices.')"
+  fi
   note "$(installer_text "Nait-AWG доступен по адресу: $panel_address" "Nait-AWG is available at: $panel_address")"
-  note "$(installer_text 'Пользователи, пароль, порт и настройки сохранены. Установщик обновил веб-интерфейс, не перезапуская контейнер AmneziaWG.' 'Clients, password, port and settings are preserved. The installer updated the web interface without restarting the AmneziaWG container.')"
+  note "$(installer_text 'Пользователи, пароль и порт сохранены. Контейнер AmneziaWG не перезапускался.' 'Clients, password and port are preserved. The AmneziaWG container was not restarted.')"
   exit 0
 fi
 

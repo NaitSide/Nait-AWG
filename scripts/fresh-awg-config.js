@@ -17,7 +17,7 @@ function render(privateKey, headerKey, port) {
   key(privateKey); key(headerKey);
   if (!/^\d{1,5}$/.test(String(port)) || Number(port) < 1024 || Number(port) > 65535) throw new Error('Invalid AWG UDP port.');
   const values = generate({
-    ContentPaddingAddition: '10-100', RekeyAfterTime: '100-120', RekeyTimeout: '3-7',
+    ContentPaddingAddition: '0', RekeyAfterTime: '100-120', RekeyTimeout: '3-7',
     RejectAfterTime: '150-180', KeepaliveTimeout: '5-15', MaxHandshakeAttempts: '15-20',
     RandomTrailers: 'on', DisableCookies: 'on',
     I1: '<r 2><b 0x858000010001000000000669636c6f756403636f6d0000010001c00c000100010000105a00044d583737>'
