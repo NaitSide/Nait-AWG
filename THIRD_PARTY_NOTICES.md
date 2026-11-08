@@ -17,10 +17,6 @@ Nait-AWG поставляет сохранённый официальный се
 
 Иконки Lucide (`venetian-mask`, `split`, `refresh-cw`): [исходный проект](https://github.com/lucide-icons/lucide), [лицензия и уведомления об авторских правах](licenses/lucide-LICENSE.txt). SVG-пути взяты из Lucide 1.8.0.
 
-## GeoIP
-
-Списки российских IPv4-сетей загружаются по запросу администратора из [IPdeny](https://www.ipdeny.com/ipblocks/). Готовая база в состав проекта не включается. Применяются [условия использования](https://www.ipdeny.com/tos.php) и [ограничения частоты запросов](https://www.ipdeny.com/usagelimits.php) IPdeny. Источник классифицирует сети по стране распределения адресов; это не гарантия физического расположения серверов.
-
 ## Домены Госуслуг и Яндекс Карт
 
-Часть фактических доменных имён взята из [RU Direct](https://github.com/kyoresuas/ru-direct), конфигурации government.json и yandex.json, и проверяется через DNS. [MIT](licenses/ru-direct-MIT.txt). Сети AS196747 и AS13238 получены из RIPEstat; применяются те же условия RIPEstat, что для AS32934.
+Часть доменных имён и IPv4-подсетей взята из [RU Direct](https://github.com/kyoresuas/ru-direct): конфигурации сервисов и опубликованный сервисный снимок. Дата снимка указана в каталоге; домены дополнительно проверяются через DNS. [MIT](licenses/ru-direct-MIT.txt). Сети AS196747 и AS13238 получены из RIPEstat; применяются те же условия RIPEstat, что для AS32934.

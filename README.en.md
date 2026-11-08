@@ -117,7 +117,7 @@ Route all traffic through the VPN or choose one of two experimental modes.
 
 **Everything except selected services.** Selected services connect directly; other traffic uses the VPN. Useful for Russian websites, banking apps and SBP payments.
 
-This mode can also bypass Russian IPv4 networks using **GeoIP**. The IPdeny list is updated separately and applied after saving settings. [Details and device testing (Russian)](docs/geoip.md).
+Choose the Russian services you need: their addresses connect directly, while other traffic uses the VPN. Service networks are supplemented with curated lists, and domain addresses can be refreshed through DNS.
 
 ![Everything except selected services — Russian interface](img/ru/routing-excluded.png)
 

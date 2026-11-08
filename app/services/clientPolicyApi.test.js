@@ -25,20 +25,16 @@ test('production policy APIs enforce authentication, origin checks, validation a
     method,headers:{'content-type':'application/json',...headers},
     ...(body===undefined?{}:{body:JSON.stringify(body)})});
   for(const [route,method] of [['/api/client-policies','GET'],['/api/client-policies','POST'],
-    ['/api/client-policies/generate','POST'],['/api/client-policies/resolve','POST'],['/api/client-policies/geoip/refresh','POST'],['/api/peers/012345abcdef/policies','GET'],['/api/peers/012345abcdef/policies','PUT']]){
+    ['/api/client-policies/generate','POST'],['/api/client-policies/resolve','POST'],['/api/peers/012345abcdef/policies','GET'],['/api/peers/012345abcdef/policies','PUT']]){
     assert.equal((await call(route,method,method==='GET'?undefined:{})).status,401);
   }
   const login=await call('/api/login','POST',{username:'admin',password:process.env.NAIT_AWG_ADMIN_PASSWORD});
   assert.equal(login.status,200);
   const cookie=login.headers.get('set-cookie').split(';')[0],headers={cookie};
   assert.equal((await call('/api/client-policies/resolve','POST',{services:['youtube']},{...headers,origin:'https://untrusted.invalid'})).status,403);
-  assert.equal((await call('/api/client-policies/geoip/refresh','POST',{}, {...headers,origin:'https://untrusted.invalid'})).status,403);
   assert.equal((await call('/api/client-policies/resolve','POST',{services:['https://untrusted.invalid']},headers)).status,400);
   const state=await (await call('/api/client-policies','GET',undefined,headers)).json();
   assert.equal(state.revision,0);
-  assert.equal(state.geoip,null);
-  const missingGeoip=await call('/api/client-policies','POST',{expectedRevision:0,type:'routing',value:{mode:'excluded',services:[],geoip:{enabled:true,hash:'a'.repeat(64)}}},headers);
-  assert.equal(missingGeoip.status,400);assert.equal((await missingGeoip.json()).code,'geoip_snapshot_unavailable');
   const generate=await call('/api/client-policies/generate','POST',{profile:'dns'},headers);
   assert.equal(generate.status,200);assert((await generate.json()).packets.I1);
   const input={expectedRevision:0,type:'routing',value:{mode:'selected',services:['telegram']}};

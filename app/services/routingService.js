@@ -1,7 +1,6 @@
 'use strict';
 const net = require('node:net');
-const {invertIPv4,collapseIPv4}=require('./ipv4Inverter');
-const geoipRules=require('./geoipRules');
+const {invertIPv4}=require('./ipv4Inverter');
 function invalid(code = 'invalid_service_catalog') {
   return Object.assign(new Error('Некорректный каталог или выбор сервисов.'), {status: 400, code});
 }
@@ -97,8 +96,6 @@ function validateRouting(value, allowUnavailable = false) {
   const ids = [...new Set(value.services)].sort();
   const custom = customRows(value.custom), resolved = resolvedServices(value.resolved), extras = serviceExtras(value.extras);
   if (value.bypassLocal !== undefined && typeof value.bypassLocal !== 'boolean') throw invalid();
-  const geoip=geoipRules.reference(value.geoip);
-  if(geoip?.enabled && value.mode!=='excluded')throw geoipRules.failure('invalid_geoip_mode','GeoIP доступен только в режиме «Всё, кроме выбранных сервисов».');
   if (ids.some(id => !catalog.services.some(service => service.id === id && (allowUnavailable || service.available || resolved[id]?.ipv4.length || extras[id]?.length)))
       || (value.mode === 'selected' && !ids.length && !custom.some(row => row.enabled))) throw invalid('empty_or_unavailable_services');
   let choices;
@@ -110,7 +107,6 @@ function validateRouting(value, allowUnavailable = false) {
     }));
   }
   return {...(choices?{choices}:{}),mode:value.mode,services:value.mode === 'all' ? [] : ids,
-    ...(geoip?{geoip}:{}),
     ...(value.extras !== undefined ? {extras} : {}), ...(value.custom !== undefined ? {custom} : {}), ...(value.resolved !== undefined ? {resolved} : {}),
     ...(value.bypassLocal !== undefined ? {bypassLocal:value.bypassLocal} : {})};
 }
@@ -148,8 +144,7 @@ function publicIpv6Routes() {
 function routesFor(value, dns, endpoint) {
   const policy = validateRouting(value, Array.isArray(value?.ipv4));
   if(policy.mode==='excluded'){
-    const host=endpointHost(endpoint),base=value.ipv4||freezeRouting(value).ipv4;
-    const exclusions=policy.geoip?.enabled?collapseIPv4([...base,...geoipRules.validateSnapshot(value.geoip).ipv4]):base;
+    const host=endpointHost(endpoint),exclusions=value.ipv4||freezeRouting(value).ipv4;
     const parsedDns=String(dns||'').split(',').map(s=>s.trim()).filter(Boolean);
     for(const address of parsedDns){
       if(net.isIP(address)!==4)throw Object.assign(invalid('split_dns_ipv4_required'),{message:'Для выборочных маршрутов нужен DNS с IPv4-адресом.'});
@@ -174,21 +169,15 @@ function routesFor(value, dns, endpoint) {
   if (!result.length) throw invalid('empty_or_unavailable_services');
   return result.join(', ');
 }
-function freezeRouting(value, geoipSnapshot) {
-  const policy = validateRouting(value);
-  let geoip=policy.geoip;
-  if(geoip?.enabled){
-    const snapshot=geoipRules.validateSnapshot(geoipSnapshot);
-    if(snapshot.hash!==geoip.hash)throw geoipRules.failure('geoip_snapshot_unavailable');
-    geoip={...snapshot,enabled:true};
-  }
-  return {...policy,...(geoip?{geoip}:{}), catalogDate: catalog.date, ipv4: policy.mode !== 'all'
+function freezeRouting(value, allowUnavailable = false) {
+  const policy = validateRouting(value, allowUnavailable);
+  return {...policy, serviceVersion:2, catalogDate: catalog.date, ipv4: policy.mode !== 'all'
     ? union([...policy.services.flatMap(id => [...catalog.services.find(service => service.id === id).ipv4,...(policy.resolved?.[id]?.ipv4 || []),...(policy.extras?.[id] || [])]),
       ...(policy.custom || []).filter(row=>row.enabled).flatMap(row=>row.ipv4)]) : []};
 }
 function storedRouting(value) {
-  const policy = validateRouting(value, true);
-  if(policy.geoip?.enabled)policy.geoip={...geoipRules.validateSnapshot(value.geoip),enabled:true};
+  let policy = validateRouting(value, true);
+  if(value.serviceVersion!==undefined && value.serviceVersion!==2)throw invalid();
   if (typeof value.catalogDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.catalogDate)) throw invalid();
   if (!Number.isFinite(Date.parse(value.catalogDate)) || new Date(value.catalogDate).toISOString().slice(0,10) !== value.catalogDate) throw invalid();
   const routes = union(value.ipv4);
@@ -198,11 +187,20 @@ function storedRouting(value) {
     if(manual.some(block=>block.start<=route.start&&block.end>=route.end))continue;
     if(route.prefix<8 || PRIVATE_BLOCKS.some(block=>block.start<=route.end&&block.end>=route.start))throw invalid();
   }
-  return {...policy,catalogDate:value.catalogDate,ipv4:routes};
-}
-function publicRouting(value) {
-  if(!value)return value;
-  return {...value,...(value.geoip?{geoip:value.geoip.enabled?{...geoipRules.metadata(value.geoip),enabled:true}:{enabled:false}}:{})};
+  if (value.serviceVersion !== 2) {
+    // The former SBP row also included these four banks. Preserve its selection once.
+    const services = ids => ids.includes('sbp') ? [...new Set([...ids,'banks'])].sort() : ids;
+    const choices = policy.choices ? structuredClone(policy.choices) : undefined;
+    if (choices?.excluded) choices.excluded.services = services(choices.excluded.services);
+    policy = {...policy,...(choices?{choices}:{})};
+    if (policy.mode === 'excluded') {
+      policy.services = services(policy.services);
+      // Former SBP DNS answers mix bank and payment hosts; curated snapshots replace that ambiguous cache.
+      if (policy.resolved?.sbp) {policy.resolved = {...policy.resolved};delete policy.resolved.sbp;}
+      return freezeRouting(policy, true);
+    }
+  }
+  return {...policy,serviceVersion:2,catalogDate:value.catalogDate,ipv4:routes};
 }
 function endpointHost(endpoint) {
   const host = /^([^:]+):\d+$/.exec(endpoint)?.[1];
@@ -217,4 +215,4 @@ function checkEndpoint(routes, endpoint) {
       message:'Адрес VPN-сервера входит в выбранные маршруты. Выберите другие сервисы или полный режим.'});
   }
 }
-module.exports = {catalog, validateCatalog, validateRouting, freezeRouting, storedRouting, publicRouting, routesFor, checkEndpoint, union, cidr, LOCAL_NETWORKS, publicAddress, subtract};
+module.exports = {catalog, validateCatalog, validateRouting, freezeRouting, storedRouting, routesFor, checkEndpoint, union, cidr, LOCAL_NETWORKS, publicAddress, subtract};

@@ -479,11 +479,15 @@ if [[ "${1:-}" == update ]]; then
   systemctl stop "$PANEL_UNIT"
   padding_status=0
   padding_result="$(runuser -u nait-awg -- env "NAIT_AWG_PRESERVE_PADDING=${NAIT_AWG_PRESERVE_PADDING:-0}" "$node" "$INSTALL_DIR/app/services/paddingMigration.js" "$INSTALL_DIR")" || padding_status=$?
+  routing_status=0
+  runuser -u nait-awg -- "$node" "$INSTALL_DIR/app/services/routingMigration.js" "$INSTALL_DIR" >/dev/null || routing_status=$?
   systemctl start "$PANEL_UNIT"
+  [[ "$routing_status" -eq 0 ]] || fail "$(installer_text 'Панель обновлена, но перенос правил сервисов не завершён. Проверьте настройки туннелирования; повторное обновление безопасно.' 'The panel was updated, but service routing migration did not complete. Check tunneling settings; the update can be retried safely.')"
   [[ "$padding_status" -eq 0 ]] || fail "$(installer_text 'Панель обновлена, но исправление скорости не завершено. Проверьте панель перед выдачей конфигов; повторное обновление безопасно.' 'The panel was updated, but the speed fix did not complete. Check the panel before distributing configs; the update can be retried safely.')"
   if [[ "$padding_result" == *'"status":"applied"'* ]]; then
     note "$(installer_text 'Исправление скорости применено. Скачайте новые конфиги и импортируйте их на устройствах.' 'The speed fix was applied. Download new configs and import them on your devices.')"
   fi
+  note "$(installer_text 'Правила сервисов актуализированы. Скачайте и импортируйте новые конфиги на устройствах.' 'Service routes are up to date. Download and import new configs on your devices.')"
   note "$(installer_text "Nait-AWG доступен по адресу: $panel_address" "Nait-AWG is available at: $panel_address")"
   note "$(installer_text 'Пользователи, пароль и порт сохранены. Контейнер AmneziaWG не перезапускался.' 'Clients, password and port are preserved. The AmneziaWG container was not restarted.')"
   exit 0

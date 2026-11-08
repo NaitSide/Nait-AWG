@@ -3,13 +3,9 @@
   const el=id=>document.getElementById(id),t=text=>window.NaitI18n?.t(text)||text;
   const node=(tag,className,text)=>{const element=document.createElement(tag);if(className)element.className=className;if(text!==undefined)element.textContent=text;return element;};
   class RoutingTable {
-    constructor(prefix,{request,onChange,onBusy,onGeoip=()=>{}}) {
-      Object.assign(this,{prefix,request,onChange,onBusy,onGeoip,token:0,catalog:{services:[]},draft:{custom:[],resolved:{}}});
+    constructor(prefix,{request,onChange,onBusy}) {
+      Object.assign(this,{prefix,request,onChange,onBusy,token:0,catalog:{services:[]},draft:{custom:[],resolved:{}}});
       this.body=el(prefix+'Services');this.mode=el(prefix+'Mode');this.refreshButton=el(prefix+'Refresh');
-      this.geoipToggle=el(prefix+'GeoipEnabled');this.geoipButton=el(prefix+'GeoipRefresh');
-      this.geoipToggle.addEventListener('change',()=>{this.capture();onChange();if(this.geoipToggle.checked&&!this.geoipAvailable)this.refreshGeoip();});
-      this.geoipButton.addEventListener('click',()=>this.refreshGeoip());
-      window.addEventListener('nait:languagechange',()=>{if(this.draft.mode)this.display();});
       this.mode.addEventListener('change',()=>{this.cancelPending();this.capture();const next=this.mode.value;this.draft.mode=next;const choice=this.draft.choices[next]||{services:[],custom:[]};this.draft.services=choice.services;for(const row of this.draft.custom)row.enabled=choice.custom.includes(row.id);this.render();onChange();});
       this.body.addEventListener('change',()=>onChange());
       this.body.addEventListener('input',event=>{if(event.target.matches('[data-extra-ips]')){this.capture();this.updateAvailability();this.display();onChange();}else if(event.target.matches('[data-custom-name],[data-custom-ips]'))onChange();});
@@ -27,23 +23,19 @@
       });
       this.refreshButton.addEventListener('click',()=>this.refresh());
     }
-    fill(value,catalog,geoip) {
-      this.cancelPending();this.catalog=catalog||{services:[]};
-      this.geoipAvailable=value?.geoip?.enabled?value.geoip:geoip;
+    fill(value,catalog) {
+      this.token++;this.onBusy(false);this.refreshButton.disabled=false;this.catalog=catalog||{services:[]};
       this.draft=structuredClone({mode:value?.mode||'all',services:value?.services||[],custom:value?.custom||[],resolved:value?.resolved||{},choices:value?.choices||{},extras:value?.extras||{},bypassLocal:value?.bypassLocal||false});
-      this.draft.geoip=value?.geoip?.enabled?{enabled:true,hash:value.geoip.hash}:{enabled:false};
       if(!this.draft.choices[this.draft.mode]&&this.draft.mode!=='all')this.draft.choices[this.draft.mode]={services:[...this.draft.services],custom:this.draft.custom.filter(row=>row.enabled).map(row=>row.id)};
-      this.mode.value=this.draft.mode;el(this.prefix+'DnsStatus').textContent='';el(this.prefix+'GeoipStatus').textContent='';this.render();
+      this.mode.value=this.draft.mode;el(this.prefix+'DnsStatus').textContent='';this.render();
       window.NaitDropdowns?.sync(this.mode);
     }
-    cancelPending() {this.token++;this.loading(false);}
-    loading(value) {this.refreshButton.disabled=value;this.geoipButton.disabled=value;this.geoipToggle.disabled=value;this.onBusy(value);}
+    cancelPending() {this.token++;this.onBusy(false);this.refreshButton.disabled=false;}
     capture() {
 
       this.draft.services=[...this.body.querySelectorAll('[data-service]:checked')].map(input=>input.dataset.service);
       for(const input of this.body.querySelectorAll('[data-extra-ips]')){const ips=input.value.trim().split(/[\s,;]+/).filter(Boolean);if(ips.length)this.draft.extras[input.dataset.extraIps]=ips;else delete this.draft.extras[input.dataset.extraIps];}
       this.draft.bypassLocal=Boolean(this.body.querySelector('[data-local]')?.checked);
-      this.draft.geoip={enabled:this.geoipToggle.checked,...(this.geoipAvailable?{hash:this.geoipAvailable.hash}:{})};
       this.draft.custom=[...this.body.querySelectorAll('[data-custom-row]')].map(row=>({id:row.dataset.row,
         name:row.querySelector('[data-custom-name]').value.trim(),enabled:row.querySelector('input[type=checkbox]').checked,
         ipv4:row.querySelector('[data-custom-ips]').value.trim().split(/[\s,;]+/).filter(Boolean)}));
@@ -55,10 +47,7 @@
       const value=this.capture();
       if(value.custom.some(row=>!row.name||!row.ipv4.length))throw Error(t('Укажите название и хотя бы один IPv4-адрес или подсеть для каждой своей строки.'));
       if(value.mode==='selected'&&!value.services.length&&!value.custom.some(row=>row.enabled))throw Error(t('Выберите хотя бы один доступный сервис.'));
-      const result=structuredClone(value);
-      if(result.mode!=='excluded')delete result.geoip;
-      if(result.geoip?.enabled&&!result.geoip.hash)throw Error(t('Дождитесь загрузки GeoIP или отключите исключение российских сетей.'));
-      return result;
+      return structuredClone(value);
     }
     checkbox(name,checked,attribute,value='') {
       const input=node('input');input.type='checkbox';input.checked=checked;input.dataset[attribute]=value;
@@ -89,7 +78,7 @@
         const row=node('tr',available?'':'route-unavailable'),check=node('td'),name=node('td'),addresses=node('td');
         const input=this.checkbox(service.name.ru,this.draft.services.includes(service.id),'service',service.id);
         input.dataset.available=String(available);input.dataset.baseAvailable=String(service.available||Boolean(resolved?.ipv4.length));check.append(input);
-        const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);if(service.id==='sbp'){name.append(node('small','route-description','НСПК, Сбер, Тиньков, ВТБ, Альфа-Банк'));}
+        const title=node('strong','route-service-name',service.name.ru);title.title=service.description.ru;name.append(title);if(service.id==='sbp')name.append(node('small','route-description','НСПК и QR-платежи'));if(service.id==='banks')name.append(node('small','route-description','Сбер, Тиньков, ВТБ, Альфа-Банк'));
         const labels={telegram:'Сети Telegram',youtube:'Сети Google',instagram:'Сети Meta',whatsapp:'Сети Meta',facebook:'Сети Meta',yandex:'Сети Яндекса',gosuslugi:'Сети электронного правительства',stolichki:'Сайт и CDN'};
         const description=node('small','route-description',!available?'Обновите IP через DNS':!service.available?(resolved?.ipv4.length?'DNS-адреса':'Добавлено вручную'):labels[service.id]);
         name.append(description);this.addresses(addresses,[...new Set([...(resolved?.ipv4||[]),...service.ipv4])],service.id);
@@ -124,11 +113,6 @@
     display() {
       const all=this.mode.value==='all';
       const excluded=this.draft.mode==='excluded',warning=el(this.prefix+'Warning');warning.hidden=all;
-      el(this.prefix+'Geoip').hidden=!excluded;
-      this.geoipToggle.checked=Boolean(this.draft.geoip?.enabled);
-      const snapshot=this.geoipAvailable;
-      el(this.prefix+'GeoipDate').textContent=snapshot?t('Обновлено')+': '+new Date(snapshot.updatedAt).toLocaleString(window.NaitI18n?.language==='en'?'en-GB':'ru-RU'):t('Список ещё не загружен');
-      el(this.prefix+'GeoipCount').textContent=snapshot?t('IPv4-подсетей')+': '+snapshot.count.toLocaleString():'';
       warning.querySelector('[data-warning-selected]').hidden=excluded;warning.querySelector('[data-warning-excluded]').hidden=!excluded;
       el(this.prefix+'CustomNote').textContent=t(excluded?"Отметьте «Локальные сети», чтобы оставить их доступными напрямую. Выбранные собственные IP и подсети также обходят VPN.":"Отметьте «Локальные сети», чтобы оставить их доступными напрямую. Собственные IP и подсети в остальных строках направляются через VPN.");
       el(this.prefix+'InverseNote').hidden=!excluded;el(this.prefix+'LegacyNote').hidden=excluded;
@@ -138,7 +122,7 @@
       this.body.closest('table').classList.toggle('route-full-mode',all);
     }
     async refresh() {
-      const token=++this.token,feedback=el(this.prefix+'DnsStatus');this.loading(true);this.onChange();
+      const token=++this.token,feedback=el(this.prefix+'DnsStatus');this.refreshButton.disabled=true;this.onBusy(true);this.onChange();
       feedback.textContent=t('Запрашиваем адреса через Cloudflare, Google и Яндекс DNS…');
       try {
         const result=await this.request('/api/client-policies/resolve',{services:this.visibleServices().map(service=>service.id)});
@@ -157,21 +141,7 @@
           ?'Часть DNS-запросов не выполнена. Доступные адреса добавлены; прежние списки сохранены.'
           :'IP-адреса обновлены. Сохраните настройки и скачайте конфиги заново.');
       } catch(error) {if(token===this.token)feedback.textContent=error.message;}
-      finally {if(token===this.token)this.loading(false);}
-    }
-    async refreshGeoip() {
-      const token=++this.token,feedback=el(this.prefix+'GeoipStatus');
-      this.loading(true);feedback.textContent=t('Загружаем и проверяем российские IPv4-сети…');
-      try {
-        const snapshot=await this.request('/api/client-policies/geoip/refresh',{});
-        if(token!==this.token)return;
-        this.geoipAvailable=snapshot;this.onGeoip(snapshot);this.capture();this.display();this.onChange();
-        feedback.textContent=t('GeoIP обновлён. Сохраните настройки и импортируйте новый конфиг.');
-      } catch(error) {
-        if(token!==this.token)return;
-        if(!this.geoipAvailable){this.draft.geoip={enabled:false};this.display();}
-        feedback.textContent=error.message;
-      } finally {if(token===this.token)this.loading(false);}
+      finally {if(token===this.token){this.refreshButton.disabled=false;this.onBusy(false);}}
     }
   }
   window.NaitRoutingTable=RoutingTable;

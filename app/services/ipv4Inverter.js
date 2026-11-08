@@ -12,7 +12,7 @@ function range(token){
  return {start,end:start+size-1};
 }
 function merge(tokens){
- if(!Array.isArray(tokens)||tokens.length>32768)throw bad();
+ if(!Array.isArray(tokens)||tokens.length>16384)throw bad();
  const sorted=tokens.map(range).sort((a,b)=>a.start-b.start||a.end-b.end),out=[];
  for(const block of sorted){const last=out.at(-1);if(last&&block.start<=last.end+1)last.end=Math.max(last.end,block.end);else out.push({...block});}
  return out;

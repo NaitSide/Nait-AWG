@@ -344,7 +344,6 @@ app.get('/api/client-policies',requireAuth,async(_req,res)=>{try{res.set('Cache-
 app.post('/api/client-policies',requireAuth,async(req,res)=>{try{res.json(await panelService.setClientPolicies(req.body));}catch(error){sendError(res,error);}});
 app.post('/api/client-policies/generate',requireAuth,(req,res)=>{try{res.json(panelService.generateSignature(req.body?.profile));}catch(error){sendError(res,error);}});
 app.post('/api/client-policies/resolve',requireAuth,async(req,res)=>{try{res.set('Cache-Control','no-store').json(await routingDns.refresh(req.body));}catch(error){sendError(res,error);}});
-app.post('/api/client-policies/geoip/refresh',requireAuth,async(_req,res)=>{try{res.set('Cache-Control','no-store').json(await panelService.refreshGeoip());}catch(error){sendError(res,error);}});
 app.get('/api/peers/:fingerprint/policies',requireAuth,async(req,res)=>{try{res.set('Cache-Control','no-store').json(await panelService.getClientPolicies(req.params.fingerprint));}catch(error){sendError(res,error);}});
 app.put('/api/peers/:fingerprint/policies',requireAuth,async(req,res)=>{try{res.json(await panelService.setClientPolicies(req.body,req.params.fingerprint));}catch(error){sendError(res,error);}});
 app.get('/api/obfuscation',requireAuth,async(_req,res)=>{try{res.json(await panelService.getObfuscation());}catch(error){sendError(res,error);}});
